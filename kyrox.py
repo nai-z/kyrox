@@ -90,11 +90,13 @@ AVAILABLE_MODELS = [
 # ── App finder ──────────────────────────────────────────────────────────────
 def _find_roblox():
     base = os.path.expandvars(r"%LOCALAPPDATA%\Roblox\Versions")
+    if not os.path.exists(base):
+        return None
     matches = glob.glob(os.path.join(base, "**", "RobloxPlayerBeta.exe"), recursive=True)
-    return matches[0] if matches else "RobloxPlayerBeta"
+    return matches[0] if matches else None
 
 APP_MAP = {
-    "chrome":        [r"C:\Program Files\Google\Chrome\Application\chrome.exe", "chrome"],
+    "chrome":        [r"C:\Program Files\Google\Chrome\Application\chrome.exe"],
     "firefox":       ["firefox"],
     "edge":          [r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe", "msedge"],
     "notepad":       ["notepad"],
@@ -103,40 +105,73 @@ APP_MAP = {
     "calc":          ["calc"],
     "calculator":    ["calc"],
     "paint":         ["mspaint"],
-    "cmd":           ["cmd", "/k"],
+    "cmd":           ["cmd"],
     "powershell":    ["powershell"],
-    "discord":       [os.path.expandvars(r"%LOCALAPPDATA%\Discord\Update.exe"), "--processStart", "Discord.exe"],
+    "discord":       [os.path.expandvars(r"%LOCALAPPDATA%\Discord\Update.exe")],
     "spotify":       [os.path.expandvars(r"%APPDATA%\Spotify\Spotify.exe")],
-    "roblox":        [_find_roblox()],
     "vscode":        ["code"],
     "vs code":       ["code"],
-    "steam":         [r"C:\Program Files (x86)\Steam\steam.exe", "steam"],
-    "vlc":           [r"C:\Program Files\VideoLAN\VLC\vlc.exe", "vlc"],
+    "steam":         [r"C:\Program Files (x86)\Steam\steam.exe"],
+    "vlc":           [r"C:\Program Files\VideoLAN\VLC\vlc.exe"],
     "task manager":  ["taskmgr"],
     "word":          ["winword"],
     "excel":         ["excel"],
     "outlook":       ["outlook"],
-    "obs":           [r"C:\Program Files\obs-studio\bin\64bit\obs64.exe", "obs64"],
+    "obs":           [r"C:\Program Files\obs-studio\bin\64bit\obs64.exe"],
 }
 
-def find_and_launch(app_name: str) -> str:
-    """Try to launch an app, searching common paths if needed."""
-    app_name = app_name.lower().strip()
-    candidates = APP_MAP.get(app_name, [app_name])
+def find_and_launch(app_name: str) -> tuple[bool, str]:
+    """
+    Try to launch an app.
+    Returns (success: bool, message: str).
+    """
+    app_name_lower = app_name.lower().strip()
+    errors = []
 
-    for candidate in candidates:
-        candidate = os.path.expandvars(str(candidate))
+    # Special case: Roblox path changes every update, resolve dynamically
+    if app_name_lower == "roblox":
+        roblox_path = _find_roblox()
+        if roblox_path:
+            try:
+                subprocess.Popen([roblox_path], shell=False)
+                return True, f"Opened Roblox ({roblox_path})"
+            except Exception as e:
+                errors.append(f"Roblox direct launch failed: {e}")
+        else:
+            errors.append(r"RobloxPlayerBeta.exe not found in %LOCALAPPDATA%\Roblox\Versions")
+
+    candidates = APP_MAP.get(app_name_lower, [app_name_lower])
+
+    for raw_candidate in candidates:
+        candidate = os.path.expandvars(str(raw_candidate))
+
+        # Skip Discord's Update.exe trick — it needs special args
+        if app_name_lower == "discord" and "Update.exe" in candidate:
+            try:
+                subprocess.Popen([candidate, "--processStart", "Discord.exe"], shell=False)
+                return True, "Opened Discord"
+            except Exception as e:
+                errors.append(f"Discord via Update.exe: {e}")
+                continue
+
         try:
             if os.path.isfile(candidate):
                 subprocess.Popen([candidate], shell=False)
-                return f"✓ Opened {app_name}"
+                return True, f"Opened {app_name}"
             else:
-                subprocess.Popen(candidate, shell=True)
-                return f"✓ Opened {app_name}"
-        except:
-            continue
+                # Try as a system command (notepad, calc, etc.)
+                result = subprocess.run(
+                    candidate, shell=True,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
+                # Shell=True + no error → assume it launched
+                if result.returncode == 0 or result.returncode == 1:
+                    return True, f"Opened {app_name}"
+                errors.append(f"'{candidate}' exited {result.returncode}: {result.stderr.decode(errors='replace').strip()}")
+        except Exception as e:
+            errors.append(f"'{candidate}': {e}")
 
-    # Last resort: search in common Program Files dirs
+    # Fallback: glob search in Program Files / AppData
     search_dirs = [
         r"C:\Program Files",
         r"C:\Program Files (x86)",
@@ -144,39 +179,45 @@ def find_and_launch(app_name: str) -> str:
         os.path.expandvars(r"%APPDATA%"),
     ]
     for d in search_dirs:
-        matches = glob.glob(os.path.join(d, "**", f"*{app_name}*.exe"), recursive=True)
+        if not os.path.isdir(d):
+            continue
+        matches = glob.glob(os.path.join(d, "**", f"*{app_name_lower}*.exe"), recursive=True)
         if matches:
-            subprocess.Popen([matches[0]], shell=False)
-            return f"✓ Opened {app_name} ({matches[0]})"
+            try:
+                subprocess.Popen([matches[0]], shell=False)
+                return True, f"Opened {app_name} ({matches[0]})"
+            except Exception as e:
+                errors.append(f"Glob match '{matches[0]}': {e}")
 
-    return f"✗ Could not find {app_name}. Make sure it's installed."
+    err_detail = " | ".join(errors) if errors else "no candidates found"
+    return False, f"Could not open {app_name} — {err_detail}"
 
 
 # ── PC & File actions ────────────────────────────────────────────────────────
 def execute_action(action: dict) -> dict:
-    """Execute a PC/file action. Returns {result, data}."""
+    """Execute a PC/file action. Returns {success, result, data}."""
     atype = action.get("type", "")
     try:
         if atype == "open_app":
             app = action.get("app", "").lower()
             url = action.get("url", "")
-            msg = find_and_launch(app)
-            if url:
-                time.sleep(1.5)
+            success, msg = find_and_launch(app)
+            if success and url:
+                time.sleep(1.2)
                 webbrowser.open(url)
-                return {"result": f"✓ Opened {app} → {url}"}
-            return {"result": msg}
+                return {"success": True, "result": f"Opened {app} → {url}"}
+            return {"success": success, "result": msg}
 
         elif atype == "web_search":
             query = action.get("query", "")
             url = f"https://www.google.com/search?q={urllib.parse.quote(query)}"
             webbrowser.open(url)
-            return {"result": f"✓ Searching: {query}"}
+            return {"success": True, "result": f"Searching: {query}"}
 
         elif atype == "open_url":
             url = action.get("url", "")
             webbrowser.open(url)
-            return {"result": f"✓ Opened {url}"}
+            return {"success": True, "result": f"Opened {url}"}
 
         elif atype == "screenshot":
             import datetime
@@ -190,31 +231,31 @@ def execute_action(action: dict) -> dict:
                     f"Add-Type -AssemblyName System.Windows.Forms,System.Drawing; "
                     f"$b=[System.Drawing.Bitmap]::new([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width,[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height); "
                     f"$g=[System.Drawing.Graphics]::FromImage($b); $g.CopyFromScreen(0,0,0,0,$b.Size); $b.Save('{path}')"], shell=True)
-            return {"result": f"✓ Screenshot saved to Desktop"}
+            return {"success": True, "result": f"Screenshot saved to Desktop"}
 
         elif atype == "volume":
             keys = {"up": 175, "down": 174, "mute": 173}
             k = keys.get(action.get("action", ""), 175)
             subprocess.run(["powershell", "-command",
                 f"$o=New-Object -ComObject WScript.Shell; $o.SendKeys([char]{k})"], shell=True)
-            return {"result": f"✓ Volume {action.get('action')}"}
+            return {"success": True, "result": f"Volume {action.get('action')}"}
 
         elif atype == "media":
             keys = {"play_pause": 179, "next": 176, "prev": 177}
             k = keys.get(action.get("action", ""), 179)
             subprocess.run(["powershell", "-command",
                 f"$o=New-Object -ComObject WScript.Shell; $o.SendKeys([char]{k})"], shell=True)
-            return {"result": f"✓ Media: {action.get('action')}"}
+            return {"success": True, "result": f"Media: {action.get('action')}"}
 
         elif atype == "run_command":
             command = action.get("command", "")
             subprocess.Popen(["cmd", "/c", command], shell=True)
-            return {"result": f"✓ Ran: {command}"}
+            return {"success": True, "result": f"Ran: {command}"}
 
         elif atype == "close_app":
             app = action.get("app", "")
             subprocess.run(["taskkill", "/f", "/im", f"{app}.exe"], shell=True)
-            return {"result": f"✓ Closed {app}"}
+            return {"success": True, "result": f"Closed {app}"}
 
         elif atype == "create_file":
             path = action.get("path", "")
@@ -222,29 +263,29 @@ def execute_action(action: dict) -> dict:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
             with open(path, "w", encoding="utf-8") as f:
                 f.write(content)
-            return {"result": f"✓ Created {Path(path).name}"}
+            return {"success": True, "result": f"Created {Path(path).name}"}
 
         elif atype == "create_folder":
             path = action.get("path", "")
             Path(path).mkdir(parents=True, exist_ok=True)
-            return {"result": f"✓ Created folder {path}"}
+            return {"success": True, "result": f"Created folder {path}"}
 
         elif atype == "read_file":
             path = action.get("path", "")
             with open(path, "r", encoding="utf-8") as f:
                 content = f.read()
-            return {"result": f"✓ Read {Path(path).name}", "data": content}
+            return {"success": True, "result": f"Read {Path(path).name}", "data": content}
 
         elif atype == "list_folder":
             path = action.get("path", "")
             items = list(Path(path).iterdir())
             files = [{"name": i.name, "type": "folder" if i.is_dir() else "file"} for i in items]
-            return {"result": f"✓ Listed {path}", "data": files}
+            return {"success": True, "result": f"Listed {path}", "data": files}
 
-        return {"result": f"✗ Unknown action: {atype}"}
+        return {"success": False, "result": f"Unknown action: {atype}"}
 
     except Exception as e:
-        return {"result": f"✗ {atype} failed: {e}"}
+        return {"success": False, "result": f"{atype} failed: {e}"}
 
 
 # ── Config ───────────────────────────────────────────────────────────────────
@@ -461,9 +502,17 @@ class KyroxHandler(BaseHTTPRequestHandler):
                                     try:
                                         action_data = json.loads(match.group(1))
                                         res = execute_action(action_data)
-                                        action_results.append({"action": action_data, "result": res["result"]})
-                                    except:
-                                        pass
+                                        action_results.append({
+                                            "action": action_data,
+                                            "result": res["result"],
+                                            "success": res.get("success", True)
+                                        })
+                                    except Exception as e:
+                                        action_results.append({
+                                            "action": {},
+                                            "result": f"Parse error: {e}",
+                                            "success": False
+                                        })
 
                                 folder_match = re.search(r'NEED_FOLDER:(.+?)(?:\n|$)', full_response)
                                 if folder_match:
