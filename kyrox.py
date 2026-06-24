@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Kyrox - Your AI. Your Machine. Your Rules.
-Local AI chat server powered by Ollama.
+Local AI assistant with PC control + voice recognition.
 """
 
 import json
@@ -13,6 +13,9 @@ import webbrowser
 import time
 import urllib.request
 import urllib.error
+import subprocess
+import platform
+import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
@@ -24,41 +27,66 @@ DEFAULT_CONFIG = {
     "model": "llama3.2",
     "ollama_url": "http://localhost:11434",
     "port": 80,
-    "system_prompt": "You are Kyrox, a fast and private local AI assistant. You run entirely on the user's machine — no cloud, no tracking, no subscriptions. Be helpful, direct, and concise.",
     "temperature": 0.7,
+    "system_prompt": (
+        "You are Kyrox, a fast and private local AI assistant that also controls the user's PC. "
+        "You run entirely on the user's machine — no cloud, no tracking, no subscriptions.\n\n"
+        "When the user asks you to do something on their PC (open an app, search the web, take a screenshot, etc.), "
+        "you MUST respond with a JSON action block like this, on its own line:\n"
+        "ACTION:{\"type\": \"open_app\", \"app\": \"chrome\"}\n\n"
+        "Available action types:\n"
+        "- open_app: {\"type\": \"open_app\", \"app\": \"chrome|notepad|explorer|spotify|discord|vscode|calc|cmd|powershell|paint|wordpad\"}\n"
+        "- web_search: {\"type\": \"web_search\", \"query\": \"your search query\"}\n"
+        "- open_url: {\"type\": \"open_url\", \"url\": \"https://example.com\"}\n"
+        "- screenshot: {\"type\": \"screenshot\"}\n"
+        "- volume: {\"type\": \"volume\", \"action\": \"up|down|mute\"}\n"
+        "- media: {\"type\": \"media\", \"action\": \"play_pause|next|prev\"}\n"
+        "- type_text: {\"type\": \"type_text\", \"text\": \"text to type\"}\n"
+        "- run_command: {\"type\": \"run_command\", \"command\": \"shell command here\"}\n"
+        "- close_app: {\"type\": \"close_app\", \"app\": \"app name\"}\n\n"
+        "Always put the ACTION line first, then your normal response. "
+        "If no PC action is needed, just respond normally without any ACTION block."
+    ),
 }
 
 AVAILABLE_MODELS = [
     {"id": "llama3.2",         "name": "Llama 3.2 3B",        "size": "2.0 GB",  "desc": "Fast & great for everyday tasks"},
     {"id": "llama3.2:1b",      "name": "Llama 3.2 1B",        "size": "1.3 GB",  "desc": "Ultra-fast, lightweight"},
     {"id": "llama3.1:8b",      "name": "Llama 3.1 8B",        "size": "4.7 GB",  "desc": "Balanced power and speed"},
-    {"id": "llama3.1:70b",     "name": "Llama 3.1 70B",       "size": "40 GB",   "desc": "Most powerful Llama — needs 48GB RAM"},
     {"id": "mistral",          "name": "Mistral 7B",           "size": "4.1 GB",  "desc": "Sharp reasoning, great at instructions"},
-    {"id": "mistral-nemo",     "name": "Mistral Nemo 12B",     "size": "7.1 GB",  "desc": "Longer context, very capable"},
     {"id": "gemma3:4b",        "name": "Gemma 3 4B",           "size": "3.3 GB",  "desc": "Google's efficient model"},
-    {"id": "gemma3:12b",       "name": "Gemma 3 12B",          "size": "8.1 GB",  "desc": "Google's powerful model"},
-    {"id": "gemma3:27b",       "name": "Gemma 3 27B",          "size": "17 GB",   "desc": "Google's best — needs 24GB RAM"},
     {"id": "qwen2.5:7b",       "name": "Qwen 2.5 7B",          "size": "4.7 GB",  "desc": "Excellent multilingual support"},
-    {"id": "qwen2.5:14b",      "name": "Qwen 2.5 14B",         "size": "9.0 GB",  "desc": "Strong coder and reasoner"},
-    {"id": "qwen2.5:32b",      "name": "Qwen 2.5 32B",         "size": "20 GB",   "desc": "Top-tier open model"},
     {"id": "qwen2.5-coder:7b", "name": "Qwen 2.5 Coder 7B",   "size": "4.7 GB",  "desc": "Best local coding assistant"},
     {"id": "deepseek-r1:7b",   "name": "DeepSeek R1 7B",       "size": "4.7 GB",  "desc": "Reasoning model with chain-of-thought"},
-    {"id": "deepseek-r1:14b",  "name": "DeepSeek R1 14B",      "size": "9.0 GB",  "desc": "Powerful reasoning — thinks before answering"},
-    {"id": "deepseek-r1:32b",  "name": "DeepSeek R1 32B",      "size": "20 GB",   "desc": "Elite reasoning model"},
-    {"id": "phi4",             "name": "Phi-4 14B",             "size": "9.1 GB",  "desc": "Microsoft's compact powerhouse"},
     {"id": "phi4-mini",        "name": "Phi-4 Mini 3.8B",      "size": "2.5 GB",  "desc": "Microsoft's fastest model"},
-    {"id": "command-r",        "name": "Command R 35B",         "size": "20 GB",   "desc": "Cohere's model, great at RAG & search"},
-    {"id": "solar-pro",        "name": "Solar Pro 22B",         "size": "13 GB",   "desc": "Upstage's top performer"},
-    {"id": "falcon3:7b",       "name": "Falcon 3 7B",           "size": "4.5 GB",  "desc": "TII's efficient open model"},
-    {"id": "vicuna",           "name": "Vicuna 7B",             "size": "3.8 GB",  "desc": "Classic fine-tuned Llama"},
-    {"id": "openchat",         "name": "OpenChat 7B",           "size": "4.1 GB",  "desc": "High-quality chat model"},
-    {"id": "neural-chat",      "name": "Neural Chat 7B",        "size": "4.1 GB",  "desc": "Intel-optimized chat model"},
-    {"id": "starling-lm",      "name": "Starling LM 7B",        "size": "4.1 GB",  "desc": "RLHF-trained, follows instructions well"},
-    {"id": "codellama:7b",     "name": "Code Llama 7B",         "size": "3.8 GB",  "desc": "Meta's dedicated code model"},
-    {"id": "codellama:13b",    "name": "Code Llama 13B",        "size": "7.4 GB",  "desc": "Stronger coding — Python, JS, C++"},
-    {"id": "starcoder2:7b",    "name": "StarCoder2 7B",         "size": "4.0 GB",  "desc": "BigCode's open coding model"},
-    {"id": "nomic-embed-text", "name": "Nomic Embed",           "size": "274 MB",  "desc": "Text embeddings for search/RAG"},
 ]
+
+# ── App name → executable mapping ──────────────────────────────────────────────
+APP_MAP = {
+    "chrome":       ["chrome", "google-chrome", r"C:\Program Files\Google\Chrome\Application\chrome.exe"],
+    "firefox":      ["firefox"],
+    "edge":         ["msedge", r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"],
+    "notepad":      ["notepad"],
+    "wordpad":      ["wordpad"],
+    "explorer":     ["explorer"],
+    "calc":         ["calc"],
+    "calculator":   ["calc"],
+    "paint":        ["mspaint"],
+    "cmd":          ["cmd", "/k"],
+    "powershell":   ["powershell"],
+    "discord":      ["discord", r"%LOCALAPPDATA%\Discord\Update.exe", "--processStart", "Discord.exe"],
+    "spotify":      ["spotify", r"%APPDATA%\Spotify\Spotify.exe"],
+    "vscode":       ["code"],
+    "vs code":      ["code"],
+    "steam":        ["steam", r"C:\Program Files (x86)\Steam\steam.exe"],
+    "vlc":          ["vlc"],
+    "task manager": ["taskmgr"],
+    "taskmgr":      ["taskmgr"],
+    "snipping tool":["snippingtool"],
+    "word":         ["winword"],
+    "excel":        ["excel"],
+    "outlook":      ["outlook"],
+}
 
 
 def load_config():
@@ -110,6 +138,99 @@ def get_installed_models(ollama_url):
     return []
 
 
+# ── PC CONTROL ─────────────────────────────────────────────────────────────────
+
+def execute_action(action: dict) -> str:
+    """Execute a PC action and return a status string."""
+    atype = action.get("type", "")
+
+    try:
+        if atype == "open_app":
+            app = action.get("app", "").lower()
+            cmds = APP_MAP.get(app, [app])
+            subprocess.Popen(cmds, shell=True)
+            return f"✓ Opened {app}"
+
+        elif atype == "web_search":
+            query = action.get("query", "")
+            url = f"https://www.google.com/search?q={urllib.parse.quote(query)}"
+            webbrowser.open(url)
+            return f"✓ Searching: {query}"
+
+        elif atype == "open_url":
+            url = action.get("url", "")
+            webbrowser.open(url)
+            return f"✓ Opened {url}"
+
+        elif atype == "screenshot":
+            import datetime
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            path = str(Path.home() / "Desktop" / f"kyrox_screenshot_{ts}.png")
+            # Try multiple methods
+            try:
+                import PIL.ImageGrab
+                img = PIL.ImageGrab.grab()
+                img.save(path)
+            except ImportError:
+                subprocess.run(
+                    ["powershell", "-command",
+                     f"Add-Type -AssemblyName System.Windows.Forms; "
+                     f"[System.Windows.Forms.Screen]::PrimaryScreen | Out-Null; "
+                     f"$bmp = [System.Drawing.Bitmap]::new([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width, [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height); "
+                     f"$g = [System.Drawing.Graphics]::FromImage($bmp); "
+                     f"$g.CopyFromScreen(0,0,0,0,$bmp.Size); "
+                     f"$bmp.Save('{path}')"],
+                    shell=True
+                )
+            return f"✓ Screenshot saved to Desktop"
+
+        elif atype == "volume":
+            vol_action = action.get("action", "")
+            if vol_action == "up":
+                subprocess.run(["powershell", "-command",
+                    "$obj = New-Object -ComObject WScript.Shell; $obj.SendKeys([char]175)"], shell=True)
+            elif vol_action == "down":
+                subprocess.run(["powershell", "-command",
+                    "$obj = New-Object -ComObject WScript.Shell; $obj.SendKeys([char]174)"], shell=True)
+            elif vol_action == "mute":
+                subprocess.run(["powershell", "-command",
+                    "$obj = New-Object -ComObject WScript.Shell; $obj.SendKeys([char]173)"], shell=True)
+            return f"✓ Volume {vol_action}"
+
+        elif atype == "media":
+            med_action = action.get("action", "")
+            key_map = {"play_pause": 179, "next": 176, "prev": 177}
+            key = key_map.get(med_action, 179)
+            subprocess.run(["powershell", "-command",
+                f"$obj = New-Object -ComObject WScript.Shell; $obj.SendKeys([char]{key})"], shell=True)
+            return f"✓ Media: {med_action}"
+
+        elif atype == "type_text":
+            text = action.get("text", "")
+            subprocess.run(["powershell", "-command",
+                f"$obj = New-Object -ComObject WScript.Shell; $obj.SendKeys('{text}')"], shell=True)
+            return f"✓ Typed text"
+
+        elif atype == "run_command":
+            command = action.get("command", "")
+            subprocess.Popen(["cmd", "/c", command], shell=True)
+            return f"✓ Ran: {command}"
+
+        elif atype == "close_app":
+            app = action.get("app", "")
+            subprocess.run(["taskkill", "/f", "/im", f"{app}.exe"], shell=True)
+            return f"✓ Closed {app}"
+
+        return f"Unknown action: {atype}"
+
+    except Exception as e:
+        return f"✗ Action failed: {e}"
+
+
+# Add urllib.parse import
+import urllib.parse
+
+
 class KyroxHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
@@ -147,7 +268,6 @@ class KyroxHandler(BaseHTTPRequestHandler):
         cfg = load_config()
         p = self.path.rstrip("/")
 
-        # Redirect root to /kyrox
         if p == "":
             self.send_response(302)
             self.send_header("Location", "/kyrox")
@@ -184,6 +304,12 @@ class KyroxHandler(BaseHTTPRequestHandler):
             save_config(cfg)
             self.send_json({"ok": True})
 
+        elif self.path == "/kyrox/api/action":
+            # Direct action execution endpoint
+            action = body.get("action", {})
+            result = execute_action(action)
+            self.send_json({"result": result})
+
         elif self.path == "/kyrox/api/chat":
             messages = body.get("messages", [])
             model = body.get("model", cfg["model"])
@@ -208,6 +334,8 @@ class KyroxHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
 
+            full_response = ""
+
             try:
                 with urllib.request.urlopen(req, timeout=120) as resp:
                     for line in resp:
@@ -218,6 +346,29 @@ class KyroxHandler(BaseHTTPRequestHandler):
                             chunk = json.loads(line)
                             token = chunk.get("message", {}).get("content", "")
                             done = chunk.get("done", False)
+                            full_response += token
+
+                            # Check for ACTION block and execute it
+                            if "ACTION:" in full_response and done:
+                                action_match = re.search(r'ACTION:(\{.*?\})', full_response, re.DOTALL)
+                                if action_match:
+                                    try:
+                                        action_data = json.loads(action_match.group(1))
+                                        action_result = execute_action(action_data)
+                                        # Send action result as special event
+                                        action_event = json.dumps({
+                                            "action_result": action_result,
+                                            "action": action_data,
+                                            "token": "",
+                                            "done": False
+                                        })
+                                        self.wfile.write(f"data: {action_event}\n\n".encode())
+                                        self.wfile.flush()
+                                        # Remove ACTION line from response
+                                        full_response = re.sub(r'ACTION:\{.*?\}\n?', '', full_response, flags=re.DOTALL)
+                                    except:
+                                        pass
+
                             data = json.dumps({"token": token, "done": done})
                             self.wfile.write(f"data: {data}\n\n".encode())
                             self.wfile.flush()
@@ -273,6 +424,22 @@ class KyroxHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
 
+def check_voice_deps():
+    """Check if voice recognition dependencies are installed."""
+    try:
+        import speech_recognition
+        return True
+    except ImportError:
+        return False
+
+
+def install_voice_deps():
+    """Install voice recognition dependencies."""
+    print("  Installing voice recognition dependencies...")
+    subprocess.run([sys.executable, "-m", "pip", "install", "SpeechRecognition", "pyaudio"], check=True)
+    print("  ✓ Voice deps installed")
+
+
 def main():
     cfg = load_config()
     port = cfg.get("port", 80)
@@ -293,6 +460,13 @@ def main():
     print("")
     print(f"  → Local:   {url_local}")
     print(f"  → Network: {url_network}")
+    print("")
+
+    has_voice = check_voice_deps()
+    if has_voice:
+        print("  🎤 Voice recognition: ready")
+    else:
+        print("  🎤 Voice recognition: not installed (install with: pip install SpeechRecognition pyaudio)")
     print("")
     print("  Press Ctrl+C to stop.")
     print("")
