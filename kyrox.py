@@ -1,7 +1,8 @@
+cat > /mnt/user-data/outputs/kyrox.py << 'ENDOFFILE'
 #!/usr/bin/env python3
 """
 Kyrox - Your AI. Your Machine. Your Rules.
-Local AI assistant with PC control + voice recognition.
+Local AI assistant with PC control + voice + file system access.
 """
 
 import json
@@ -12,10 +13,11 @@ import threading
 import webbrowser
 import time
 import urllib.request
+import urllib.parse
 import urllib.error
 import subprocess
-import platform
 import re
+import glob
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
@@ -23,30 +25,51 @@ KYROX_DIR = Path(__file__).parent
 STATIC_DIR = KYROX_DIR / "static"
 CONFIG_FILE = KYROX_DIR / "config.json"
 
+SYSTEM_PROMPT = """You are Kyrox — a sharp, no-nonsense local AI that runs entirely on the user's machine. No cloud, no tracking, no subscriptions. Just raw intelligence, offline.
+
+Your personality:
+- You speak like a smart friend who knows tech — casual but competent
+- You're direct, never verbose. Get to the point.
+- You refer to yourself as Kyrox, never "I am an AI" or "as a language model"
+- You have a subtle confidence. You know what you're doing.
+- You never say "Certainly!", "Of course!", "Sure!" — just do the thing.
+
+When creating files or projects, you MUST ask the user which folder to use by outputting:
+NEED_FOLDER:<reason why you need a folder>
+
+Example: if user says "create a game", output:
+NEED_FOLDER:I need a folder to save the game files
+
+Once the user provides a folder path (they'll send it as FOLDER_PATH:/some/path), you can then use file actions.
+
+When the user asks you to do something on their PC, output an ACTION block on its own line BEFORE your response:
+
+ACTION:{"type": "open_app", "app": "chrome"}
+
+Available actions:
+- open_app: {"type": "open_app", "app": "chrome|notepad|explorer|spotify|discord|vscode|calc|cmd|powershell|paint|roblox|steam|vlc|word|excel"}
+- web_search: {"type": "web_search", "query": "search query"}
+- open_url: {"type": "open_url", "url": "https://..."}
+- screenshot: {"type": "screenshot"}
+- volume: {"type": "volume", "action": "up|down|mute"}
+- media: {"type": "media", "action": "play_pause|next|prev"}
+- run_command: {"type": "run_command", "command": "shell command"}
+- close_app: {"type": "close_app", "app": "app name"}
+- create_file: {"type": "create_file", "path": "/full/path/to/file.ext", "content": "file content here"}
+- create_folder: {"type": "create_folder", "path": "/full/path/to/folder"}
+- read_file: {"type": "read_file", "path": "/full/path/to/file"}
+- list_folder: {"type": "list_folder", "path": "/full/path/to/folder"}
+
+You can chain multiple files by outputting multiple ACTION lines.
+Always put ACTION lines first, then your message.
+If no action is needed, just respond — no ACTION block."""
+
 DEFAULT_CONFIG = {
     "model": "llama3.2",
     "ollama_url": "http://localhost:11434",
     "port": 80,
     "temperature": 0.7,
-    "system_prompt": (
-        "You are Kyrox, a fast and private local AI assistant that also controls the user's PC. "
-        "You run entirely on the user's machine — no cloud, no tracking, no subscriptions.\n\n"
-        "When the user asks you to do something on their PC (open an app, search the web, take a screenshot, etc.), "
-        "you MUST respond with a JSON action block like this, on its own line:\n"
-        "ACTION:{\"type\": \"open_app\", \"app\": \"chrome\"}\n\n"
-        "Available action types:\n"
-        "- open_app: {\"type\": \"open_app\", \"app\": \"chrome|notepad|explorer|spotify|discord|vscode|calc|cmd|powershell|paint|wordpad\"}\n"
-        "- web_search: {\"type\": \"web_search\", \"query\": \"your search query\"}\n"
-        "- open_url: {\"type\": \"open_url\", \"url\": \"https://example.com\"}\n"
-        "- screenshot: {\"type\": \"screenshot\"}\n"
-        "- volume: {\"type\": \"volume\", \"action\": \"up|down|mute\"}\n"
-        "- media: {\"type\": \"media\", \"action\": \"play_pause|next|prev\"}\n"
-        "- type_text: {\"type\": \"type_text\", \"text\": \"text to type\"}\n"
-        "- run_command: {\"type\": \"run_command\", \"command\": \"shell command here\"}\n"
-        "- close_app: {\"type\": \"close_app\", \"app\": \"app name\"}\n\n"
-        "Always put the ACTION line first, then your normal response. "
-        "If no PC action is needed, just respond normally without any ACTION block."
-    ),
+    "system_prompt": SYSTEM_PROMPT,
 }
 
 AVAILABLE_MODELS = [
@@ -61,32 +84,154 @@ AVAILABLE_MODELS = [
     {"id": "phi4-mini",        "name": "Phi-4 Mini 3.8B",      "size": "2.5 GB",  "desc": "Microsoft's fastest model"},
 ]
 
-# ── App name → executable mapping ──────────────────────────────────────────────
+# ── App finder ──────────────────────────────────────────────────────────────
 APP_MAP = {
-    "chrome":       ["chrome", "google-chrome", r"C:\Program Files\Google\Chrome\Application\chrome.exe"],
-    "firefox":      ["firefox"],
-    "edge":         ["msedge", r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"],
-    "notepad":      ["notepad"],
-    "wordpad":      ["wordpad"],
-    "explorer":     ["explorer"],
-    "calc":         ["calc"],
-    "calculator":   ["calc"],
-    "paint":        ["mspaint"],
-    "cmd":          ["cmd", "/k"],
-    "powershell":   ["powershell"],
-    "discord":      ["discord", r"%LOCALAPPDATA%\Discord\Update.exe", "--processStart", "Discord.exe"],
-    "spotify":      ["spotify", r"%APPDATA%\Spotify\Spotify.exe"],
-    "vscode":       ["code"],
-    "vs code":      ["code"],
-    "steam":        ["steam", r"C:\Program Files (x86)\Steam\steam.exe"],
-    "vlc":          ["vlc"],
-    "task manager": ["taskmgr"],
-    "taskmgr":      ["taskmgr"],
-    "snipping tool":["snippingtool"],
-    "word":         ["winword"],
-    "excel":        ["excel"],
-    "outlook":      ["outlook"],
+    "chrome":        [r"C:\Program Files\Google\Chrome\Application\chrome.exe", "chrome"],
+    "firefox":       ["firefox"],
+    "edge":          [r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe", "msedge"],
+    "notepad":       ["notepad"],
+    "wordpad":       ["wordpad"],
+    "explorer":      ["explorer"],
+    "calc":          ["calc"],
+    "calculator":    ["calc"],
+    "paint":         ["mspaint"],
+    "cmd":           ["cmd", "/k"],
+    "powershell":    ["powershell"],
+    "discord":       [os.path.expandvars(r"%LOCALAPPDATA%\Discord\Update.exe"), "--processStart", "Discord.exe"],
+    "spotify":       [os.path.expandvars(r"%APPDATA%\Spotify\Spotify.exe")],
+    "roblox":        [os.path.expandvars(r"%LOCALAPPDATA%\Roblox\Versions\RobloxPlayerLauncher.exe")],
+    "vscode":        ["code"],
+    "vs code":       ["code"],
+    "steam":         [r"C:\Program Files (x86)\Steam\steam.exe", "steam"],
+    "vlc":           [r"C:\Program Files\VideoLAN\VLC\vlc.exe", "vlc"],
+    "task manager":  ["taskmgr"],
+    "word":          ["winword"],
+    "excel":         ["excel"],
+    "outlook":       ["outlook"],
+    "obs":           [r"C:\Program Files\obs-studio\bin\64bit\obs64.exe", "obs64"],
 }
+
+def find_and_launch(app_name: str) -> str:
+    """Try to launch an app, searching common paths if needed."""
+    app_name = app_name.lower().strip()
+    candidates = APP_MAP.get(app_name, [app_name])
+
+    for candidate in candidates:
+        candidate = os.path.expandvars(candidate)
+        try:
+            if os.path.isfile(candidate):
+                subprocess.Popen([candidate], shell=False)
+                return f"✓ Opened {app_name}"
+            else:
+                subprocess.Popen(candidate, shell=True)
+                return f"✓ Opened {app_name}"
+        except:
+            continue
+
+    # Last resort: search in common Program Files dirs
+    search_dirs = [
+        r"C:\Program Files",
+        r"C:\Program Files (x86)",
+        os.path.expandvars(r"%LOCALAPPDATA%"),
+        os.path.expandvars(r"%APPDATA%"),
+    ]
+    for d in search_dirs:
+        matches = glob.glob(os.path.join(d, "**", f"*{app_name}*.exe"), recursive=True)
+        if matches:
+            subprocess.Popen([matches[0]], shell=False)
+            return f"✓ Opened {app_name} ({matches[0]})"
+
+    return f"✗ Could not find {app_name}. Make sure it's installed."
+
+
+# ── PC & File actions ────────────────────────────────────────────────────────
+def execute_action(action: dict) -> dict:
+    """Execute a PC/file action. Returns {result, data}."""
+    atype = action.get("type", "")
+    try:
+        if atype == "open_app":
+            app = action.get("app", "").lower()
+            msg = find_and_launch(app)
+            return {"result": msg}
+
+        elif atype == "web_search":
+            query = action.get("query", "")
+            url = f"https://www.google.com/search?q={urllib.parse.quote(query)}"
+            webbrowser.open(url)
+            return {"result": f"✓ Searching: {query}"}
+
+        elif atype == "open_url":
+            url = action.get("url", "")
+            webbrowser.open(url)
+            return {"result": f"✓ Opened {url}"}
+
+        elif atype == "screenshot":
+            import datetime
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            path = str(Path.home() / "Desktop" / f"kyrox_{ts}.png")
+            try:
+                import PIL.ImageGrab
+                PIL.ImageGrab.grab().save(path)
+            except ImportError:
+                subprocess.run(["powershell", "-command",
+                    f"Add-Type -AssemblyName System.Windows.Forms,System.Drawing; "
+                    f"$b=[System.Drawing.Bitmap]::new([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width,[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height); "
+                    f"$g=[System.Drawing.Graphics]::FromImage($b); $g.CopyFromScreen(0,0,0,0,$b.Size); $b.Save('{path}')"], shell=True)
+            return {"result": f"✓ Screenshot saved to Desktop"}
+
+        elif atype == "volume":
+            keys = {"up": 175, "down": 174, "mute": 173}
+            k = keys.get(action.get("action", ""), 175)
+            subprocess.run(["powershell", "-command",
+                f"$o=New-Object -ComObject WScript.Shell; $o.SendKeys([char]{k})"], shell=True)
+            return {"result": f"✓ Volume {action.get('action')}"}
+
+        elif atype == "media":
+            keys = {"play_pause": 179, "next": 176, "prev": 177}
+            k = keys.get(action.get("action", ""), 179)
+            subprocess.run(["powershell", "-command",
+                f"$o=New-Object -ComObject WScript.Shell; $o.SendKeys([char]{k})"], shell=True)
+            return {"result": f"✓ Media: {action.get('action')}"}
+
+        elif atype == "run_command":
+            command = action.get("command", "")
+            subprocess.Popen(["cmd", "/c", command], shell=True)
+            return {"result": f"✓ Ran: {command}"}
+
+        elif atype == "close_app":
+            app = action.get("app", "")
+            subprocess.run(["taskkill", "/f", "/im", f"{app}.exe"], shell=True)
+            return {"result": f"✓ Closed {app}"}
+
+        elif atype == "create_file":
+            path = action.get("path", "")
+            content = action.get("content", "")
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(content)
+            return {"result": f"✓ Created {Path(path).name}"}
+
+        elif atype == "create_folder":
+            path = action.get("path", "")
+            Path(path).mkdir(parents=True, exist_ok=True)
+            return {"result": f"✓ Created folder {path}"}
+
+        elif atype == "read_file":
+            path = action.get("path", "")
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+            return {"result": f"✓ Read {Path(path).name}", "data": content}
+
+        elif atype == "list_folder":
+            path = action.get("path", "")
+            items = list(Path(path).iterdir())
+            files = [{"name": i.name, "type": "folder" if i.is_dir() else "file"} for i in items]
+            return {"result": f"✓ Listed {path}", "data": files}
+
+        return {"result": f"✗ Unknown action: {atype}"}
+
+    except Exception as e:
+        return {"result": f"✗ {atype} failed: {e}"}
 
 
 def load_config():
@@ -138,99 +283,6 @@ def get_installed_models(ollama_url):
     return []
 
 
-# ── PC CONTROL ─────────────────────────────────────────────────────────────────
-
-def execute_action(action: dict) -> str:
-    """Execute a PC action and return a status string."""
-    atype = action.get("type", "")
-
-    try:
-        if atype == "open_app":
-            app = action.get("app", "").lower()
-            cmds = APP_MAP.get(app, [app])
-            subprocess.Popen(cmds, shell=True)
-            return f"✓ Opened {app}"
-
-        elif atype == "web_search":
-            query = action.get("query", "")
-            url = f"https://www.google.com/search?q={urllib.parse.quote(query)}"
-            webbrowser.open(url)
-            return f"✓ Searching: {query}"
-
-        elif atype == "open_url":
-            url = action.get("url", "")
-            webbrowser.open(url)
-            return f"✓ Opened {url}"
-
-        elif atype == "screenshot":
-            import datetime
-            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            path = str(Path.home() / "Desktop" / f"kyrox_screenshot_{ts}.png")
-            # Try multiple methods
-            try:
-                import PIL.ImageGrab
-                img = PIL.ImageGrab.grab()
-                img.save(path)
-            except ImportError:
-                subprocess.run(
-                    ["powershell", "-command",
-                     f"Add-Type -AssemblyName System.Windows.Forms; "
-                     f"[System.Windows.Forms.Screen]::PrimaryScreen | Out-Null; "
-                     f"$bmp = [System.Drawing.Bitmap]::new([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width, [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height); "
-                     f"$g = [System.Drawing.Graphics]::FromImage($bmp); "
-                     f"$g.CopyFromScreen(0,0,0,0,$bmp.Size); "
-                     f"$bmp.Save('{path}')"],
-                    shell=True
-                )
-            return f"✓ Screenshot saved to Desktop"
-
-        elif atype == "volume":
-            vol_action = action.get("action", "")
-            if vol_action == "up":
-                subprocess.run(["powershell", "-command",
-                    "$obj = New-Object -ComObject WScript.Shell; $obj.SendKeys([char]175)"], shell=True)
-            elif vol_action == "down":
-                subprocess.run(["powershell", "-command",
-                    "$obj = New-Object -ComObject WScript.Shell; $obj.SendKeys([char]174)"], shell=True)
-            elif vol_action == "mute":
-                subprocess.run(["powershell", "-command",
-                    "$obj = New-Object -ComObject WScript.Shell; $obj.SendKeys([char]173)"], shell=True)
-            return f"✓ Volume {vol_action}"
-
-        elif atype == "media":
-            med_action = action.get("action", "")
-            key_map = {"play_pause": 179, "next": 176, "prev": 177}
-            key = key_map.get(med_action, 179)
-            subprocess.run(["powershell", "-command",
-                f"$obj = New-Object -ComObject WScript.Shell; $obj.SendKeys([char]{key})"], shell=True)
-            return f"✓ Media: {med_action}"
-
-        elif atype == "type_text":
-            text = action.get("text", "")
-            subprocess.run(["powershell", "-command",
-                f"$obj = New-Object -ComObject WScript.Shell; $obj.SendKeys('{text}')"], shell=True)
-            return f"✓ Typed text"
-
-        elif atype == "run_command":
-            command = action.get("command", "")
-            subprocess.Popen(["cmd", "/c", command], shell=True)
-            return f"✓ Ran: {command}"
-
-        elif atype == "close_app":
-            app = action.get("app", "")
-            subprocess.run(["taskkill", "/f", "/im", f"{app}.exe"], shell=True)
-            return f"✓ Closed {app}"
-
-        return f"Unknown action: {atype}"
-
-    except Exception as e:
-        return f"✗ Action failed: {e}"
-
-
-# Add urllib.parse import
-import urllib.parse
-
-
 class KyroxHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
@@ -272,22 +324,17 @@ class KyroxHandler(BaseHTTPRequestHandler):
             self.send_response(302)
             self.send_header("Location", "/kyrox")
             self.end_headers()
-
         elif p == "/kyrox":
             self.send_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
-
         elif p == "/kyrox/api/config":
             installed = get_installed_models(cfg["ollama_url"])
             self.send_json({**cfg, "installed_models": installed, "available_models": AVAILABLE_MODELS})
-
         elif p == "/kyrox/api/models":
             installed = get_installed_models(cfg["ollama_url"])
             self.send_json({"available": AVAILABLE_MODELS, "installed": installed})
-
         elif p == "/kyrox/api/status":
             result = ollama_request("/api/tags", ollama_url=cfg["ollama_url"])
             self.send_json({"ollama": result is not None})
-
         else:
             self.send_response(404)
             self.end_headers()
@@ -305,10 +352,9 @@ class KyroxHandler(BaseHTTPRequestHandler):
             self.send_json({"ok": True})
 
         elif self.path == "/kyrox/api/action":
-            # Direct action execution endpoint
             action = body.get("action", {})
             result = execute_action(action)
-            self.send_json({"result": result})
+            self.send_json(result)
 
         elif self.path == "/kyrox/api/chat":
             messages = body.get("messages", [])
@@ -348,26 +394,29 @@ class KyroxHandler(BaseHTTPRequestHandler):
                             done = chunk.get("done", False)
                             full_response += token
 
-                            # Check for ACTION block and execute it
-                            if "ACTION:" in full_response and done:
-                                action_match = re.search(r'ACTION:(\{.*?\})', full_response, re.DOTALL)
-                                if action_match:
+                            if done:
+                                # Execute all ACTION blocks
+                                action_results = []
+                                for match in re.finditer(r'ACTION:(\{[^}]+\})', full_response, re.DOTALL):
                                     try:
-                                        action_data = json.loads(action_match.group(1))
-                                        action_result = execute_action(action_data)
-                                        # Send action result as special event
-                                        action_event = json.dumps({
-                                            "action_result": action_result,
-                                            "action": action_data,
-                                            "token": "",
-                                            "done": False
-                                        })
-                                        self.wfile.write(f"data: {action_event}\n\n".encode())
-                                        self.wfile.flush()
-                                        # Remove ACTION line from response
-                                        full_response = re.sub(r'ACTION:\{.*?\}\n?', '', full_response, flags=re.DOTALL)
+                                        action_data = json.loads(match.group(1))
+                                        res = execute_action(action_data)
+                                        action_results.append({"action": action_data, "result": res["result"]})
                                     except:
                                         pass
+
+                                # Check for NEED_FOLDER
+                                folder_match = re.search(r'NEED_FOLDER:(.+?)(?:\n|$)', full_response)
+                                if folder_match:
+                                    reason = folder_match.group(1).strip()
+                                    evt = json.dumps({"need_folder": True, "reason": reason, "token": "", "done": False})
+                                    self.wfile.write(f"data: {evt}\n\n".encode())
+                                    self.wfile.flush()
+
+                                if action_results:
+                                    evt = json.dumps({"action_results": action_results, "token": "", "done": False})
+                                    self.wfile.write(f"data: {evt}\n\n".encode())
+                                    self.wfile.flush()
 
                             data = json.dumps({"token": token, "done": done})
                             self.wfile.write(f"data: {data}\n\n".encode())
@@ -424,22 +473,6 @@ class KyroxHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
 
-def check_voice_deps():
-    """Check if voice recognition dependencies are installed."""
-    try:
-        import speech_recognition
-        return True
-    except ImportError:
-        return False
-
-
-def install_voice_deps():
-    """Install voice recognition dependencies."""
-    print("  Installing voice recognition dependencies...")
-    subprocess.run([sys.executable, "-m", "pip", "install", "SpeechRecognition", "pyaudio"], check=True)
-    print("  ✓ Voice deps installed")
-
-
 def main():
     cfg = load_config()
     port = cfg.get("port", 80)
@@ -460,13 +493,6 @@ def main():
     print("")
     print(f"  → Local:   {url_local}")
     print(f"  → Network: {url_network}")
-    print("")
-
-    has_voice = check_voice_deps()
-    if has_voice:
-        print("  🎤 Voice recognition: ready")
-    else:
-        print("  🎤 Voice recognition: not installed (install with: pip install SpeechRecognition pyaudio)")
     print("")
     print("  Press Ctrl+C to stop.")
     print("")
