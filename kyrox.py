@@ -63,9 +63,68 @@ Available actions:
 - read_file: {"type": "read_file", "path": "/full/path/to/file"}
 - list_folder: {"type": "list_folder", "path": "/full/path/to/folder"}
 
-You can chain multiple files by outputting multiple ACTION lines.
+You can chain multiple files by outputting multiple ACTION lines. Each ACTION must be valid, complete, self-contained JSON on its own — file "content" fields can safely contain any characters, including braces from CSS/JS, since the parser matches braces properly (not a naive regex).
+
 Always put ACTION lines first, then your message.
 If no action is needed, just respond — no ACTION block."""
+
+# ── Skills system ─────────────────────────────────────────────────────────────
+# Lightweight, local equivalent of "Agent Skills": when the user's request
+# matches a topic, extra, detailed instructions get appended to the system
+# prompt for that one request only. This keeps the base prompt small but makes
+# Kyrox go from "minimum viable output" to a fully fleshed-out result when it
+# matters, even on small/weak local models.
+#
+# Drop more skills in KYROX_DIR / "skills" / "<name>" / "SKILL.md" (same format
+# Anthropic uses: https://github.com/anthropics/skills) and register them below
+# to have Kyrox pull from them automatically.
+
+SKILLS_DIR = KYROX_DIR / "skills"
+
+SKILLS = {
+    "website": {
+        "keywords": [
+            "site", "website", "web page", "webpage", "landing page", "html",
+            "page web", "site web", "site internet", "page d'accueil",
+        ],
+        "instructions": """WEBSITE/PROJECT RULES — never produce a minimal or placeholder site:
+- Always build a COMPLETE website: full HTML structure (header, nav if relevant, multiple content sections, footer), a separate well-developed CSS file (real colors, layout, spacing, responsive design with media queries, hover states), and a JS file if any interactivity is implied.
+- Never output a page with just a heading and one line of text. If the request is short or vague (e.g. "make me a site for X"), infer a reasonable full structure yourself: hero section, about/intro, 2-4 content sections relevant to the topic, contact or footer section.
+- Pick one clear aesthetic direction (e.g. minimal, bold/dark, playful, editorial) and commit to it with an intentional 4-6 color palette and distinctive font pairing — not browser defaults (avoid plain Arial/Times).
+- Write actual placeholder content (real paragraphs, not single words or "Lorem ipsum") so it looks like a real site, not a skeleton.
+- Default to creating 3 linked files: index.html, style.css, script.js (if needed) — not everything crammed minimally into one file.
+- Make sure index.html actually links style.css (<link rel="stylesheet" href="style.css">) and script.js (<script src="script.js"></script>) so it renders correctly when opened.
+- Treat every "create a website" request as wanting a polished, presentable result by default, not a draft.""",
+    },
+    "game": {
+        "keywords": ["game", "jeu", "jeux"],
+        "instructions": """GAME RULES:
+- Build a complete, playable game: HTML for structure/canvas, CSS for visuals (not just unstyled black-on-white), JS for full game logic (controls, win/lose conditions, score if relevant).
+- Include basic instructions for the player directly in the page (how to play, controls).
+- Test your own logic mentally for obvious bugs (off-by-one bounds, missing event listeners) before finalizing.""",
+    },
+    "script": {
+        "keywords": ["script", "automate", "automatiser", "automation"],
+        "instructions": """SCRIPT RULES:
+- Include error handling for the obvious failure cases (missing files, bad input) rather than a bare happy path.
+- Add brief comments explaining non-obvious steps.
+- If the script takes parameters, document them at the top of the file.""",
+    },
+}
+
+
+def get_skill_instructions(user_message: str) -> str:
+    """Return extra instructions for any skill whose keywords match the user's
+    last message. Multiple skills can stack if multiple topics are mentioned."""
+    if not user_message:
+        return ""
+    msg = user_message.lower()
+    matched = []
+    for name, skill in SKILLS.items():
+        if any(kw in msg for kw in skill["keywords"]):
+            matched.append(skill["instructions"])
+    return "\n\n".join(matched)
+
 
 DEFAULT_CONFIG = {
     "model": "llama3.2",
@@ -288,6 +347,72 @@ def execute_action(action: dict) -> dict:
         return {"success": False, "result": f"{atype} failed: {e}"}
 
 
+# ── ACTION block parsing ─────────────────────────────────────────────────────
+def extract_actions(text: str, marker: str = "ACTION:"):
+    """
+    Find every `ACTION:{...}` block in `text` and parse the JSON object that
+    follows the marker, properly handling nested braces and braces that appear
+    inside string values (e.g. CSS/JS file content passed to create_file).
+
+    The old implementation used re.finditer(r'ACTION:(\\{[^}]+\\})', ...), which
+    stops at the FIRST closing brace it sees — so any create_file action whose
+    "content" contains CSS/JS (which is full of { }) got truncated into invalid
+    JSON and silently failed or wrote garbage. This scans char-by-char with a
+    brace counter that's string/escape-aware instead.
+    """
+    results = []
+    search_from = 0
+    while True:
+        marker_pos = text.find(marker, search_from)
+        if marker_pos == -1:
+            break
+        start = text.find("{", marker_pos + len(marker))
+        if start == -1:
+            break
+
+        i = start
+        depth = 0
+        in_string = False
+        escape = False
+        end = None
+        while i < len(text):
+            ch = text[i]
+            if in_string:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+            else:
+                if ch == '"':
+                    in_string = True
+                elif ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end = i
+                        break
+            i += 1
+
+        if end is None:
+            # Unbalanced — likely the model got cut off mid-stream. Stop here
+            # rather than guessing.
+            break
+
+        json_str = text[start:end + 1]
+        try:
+            obj = json.loads(json_str)
+            results.append(obj)
+        except Exception as e:
+            results.append({"__parse_error__": str(e), "__raw__": json_str[:200]})
+
+        search_from = end + 1
+
+    return results
+
+
 # ── Config ───────────────────────────────────────────────────────────────────
 def load_config():
     if CONFIG_FILE.exists():
@@ -464,9 +589,20 @@ class KyroxHandler(BaseHTTPRequestHandler):
             system = body.get("system_prompt", cfg["system_prompt"])
             temperature = body.get("temperature", cfg["temperature"])
 
+            # ── Skills injection ──
+            # Look at the latest user message and append any matching skill's
+            # detailed instructions to the system prompt for this request only.
+            last_user_msg = ""
+            for m in reversed(messages):
+                if m.get("role") == "user":
+                    last_user_msg = m.get("content", "")
+                    break
+            skill_extra = get_skill_instructions(last_user_msg)
+            effective_system = system + ("\n\n" + skill_extra if skill_extra else "")
+
             payload = {
                 "model": model,
-                "messages": [{"role": "system", "content": system}] + messages,
+                "messages": [{"role": "system", "content": effective_system}] + messages,
                 "stream": True,
                 "options": {"temperature": temperature}
             }
@@ -498,21 +634,20 @@ class KyroxHandler(BaseHTTPRequestHandler):
 
                             if done:
                                 action_results = []
-                                for match in re.finditer(r'ACTION:(\{[^}]+\})', full_response, re.DOTALL):
-                                    try:
-                                        action_data = json.loads(match.group(1))
-                                        res = execute_action(action_data)
-                                        action_results.append({
-                                            "action": action_data,
-                                            "result": res["result"],
-                                            "success": res.get("success", True)
-                                        })
-                                    except Exception as e:
+                                for action_data in extract_actions(full_response):
+                                    if "__parse_error__" in action_data:
                                         action_results.append({
                                             "action": {},
-                                            "result": f"Parse error: {e}",
+                                            "result": f"Parse error: {action_data['__parse_error__']}",
                                             "success": False
                                         })
+                                        continue
+                                    res = execute_action(action_data)
+                                    action_results.append({
+                                        "action": action_data,
+                                        "result": res["result"],
+                                        "success": res.get("success", True)
+                                    })
 
                                 folder_match = re.search(r'NEED_FOLDER:(.+?)(?:\n|$)', full_response)
                                 if folder_match:
