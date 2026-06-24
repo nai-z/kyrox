@@ -1,8 +1,8 @@
 # KYROX AI
 
-**Your AI. Your Machine. Your Rules.**
+**your very own ai. w isnt it**
 
-Kyrox AI runs entirely on your computer. No cloud. No subscriptions. No one reading your conversations.
+Kyrox AI runs entirely on your computer :3
 
 ---
 
@@ -10,12 +10,12 @@ Kyrox AI runs entirely on your computer. No cloud. No subscriptions. No one read
 
 ### Windows
 ```powershell
-irm https://raw.githubusercontent.com/YOURUSERNAME/kyrox/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/nai-z/kyrox/main/install.ps1 | iex
 ```
 
 ### macOS / Linux
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOURUSERNAME/kyrox/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nai-z/kyrox/main/install.sh | bash
 ```
 
 Then open a new terminal and type:
