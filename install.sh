@@ -6,7 +6,7 @@ set -e
 
 KYROX_VERSION="1.0.0"
 KYROX_DIR="$HOME/.kyrox"
-KYROX_REPO="https://raw.githubusercontent.com/YOUR_GITHUB/kyrox/main"
+KYROX_REPO="https://raw.githubusercontent.com/nai-z/kyrox/main"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
