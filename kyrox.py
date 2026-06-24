@@ -1,4 +1,3 @@
-cat > /mnt/user-data/outputs/kyrox.py << 'ENDOFFILE'
 #!/usr/bin/env python3
 """
 Kyrox - Your AI. Your Machine. Your Rules.
