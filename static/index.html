@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>KYROX</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,700;0,900;1,400&family=Barlow+Condensed:wght@700;900&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --border: #1e1e1e;
+    --border-bright: #2a2a2a;
+    --text: #e8e8e8;
+    --muted: #555;
+    --muted2: #888;
+    --accent: #ffffff;
+    --accent-dim: rgba(255,255,255,0.06);
+    --red: #ff3b3b;
+    --green: #3bff8a;
+    --user-bg: #1a1a1a;
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Barlow', sans-serif; overflow: hidden; }
+
+  /* LAYOUT */
+  #app { display: flex; height: 100vh; }
+
+  /* SIDEBAR */
+  #sidebar {
+    width: 260px; min-width: 260px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    transition: transform 0.2s;
+    z-index: 10;
+  }
+  #sidebar.hidden { transform: translateX(-260px); position: absolute; height: 100%; }
+
+  .sidebar-header {
+    padding: 24px 20px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px; font-weight: 900;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+  }
+  .logo-sub { font-size: 10px; color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase; margin-top: 2px; }
+
+  .sidebar-section { padding: 16px 20px 8px; }
+  .sidebar-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 10px; }
+
+  /* Model selector */
+  .model-btn {
+    width: 100%; background: var(--accent-dim); border: 1px solid var(--border-bright);
+    color: var(--text); padding: 10px 12px; border-radius: 4px;
+    font-family: 'Barlow', sans-serif; font-size: 13px;
+    cursor: pointer; display: flex; align-items: center; justify-content: space-between;
+    transition: border-color 0.15s;
+  }
+  .model-btn:hover { border-color: #444; }
+  .model-btn .model-name { font-weight: 700; }
+  .model-btn .chevron { color: var(--muted); font-size: 10px; }
+
+  /* Status dot */
+  .status-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+  .dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot.offline { background: var(--red); }
+  .status-text { font-size: 11px; color: var(--muted2); }
+
+  .sidebar-divider { height: 1px; background: var(--border); margin: 8px 20px; }
+
+  /* Nav items */
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 20px; font-size: 13px; color: var(--muted2);
+    cursor: pointer; transition: color 0.15s, background 0.15s;
+    border-left: 2px solid transparent;
+  }
+  .nav-item:hover { color: var(--text); background: var(--accent-dim); }
+  .nav-item.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-dim); }
+  .nav-icon { width: 16px; text-align: center; font-size: 14px; }
+
+  .sidebar-bottom { margin-top: auto; padding: 16px 20px; border-top: 1px solid var(--border); }
+  .new-chat-btn {
+    width: 100%; padding: 10px; background: var(--accent); color: #000;
+    font-family: 'Barlow Condensed', sans-serif; font-weight: 700;
+    font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase;
+    border: none; border-radius: 4px; cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .new-chat-btn:hover { opacity: 0.85; }
+
+  /* MAIN */
+  #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+
+  /* TOP BAR */
+  #topbar {
+    height: 52px; min-height: 52px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 20px; gap: 12px;
+    background: var(--bg);
+  }
+  #toggle-sidebar {
+    background: none; border: none; color: var(--muted2); font-size: 18px;
+    cursor: pointer; padding: 4px 6px; line-height: 1;
+  }
+  #toggle-sidebar:hover { color: var(--text); }
+  .topbar-title { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 15px; letter-spacing: 0.08em; color: var(--muted2); }
+  .topbar-model { margin-left: auto; font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+  /* CHAT AREA */
+  #chat-area { flex: 1; overflow-y: auto; padding: 32px 0; scroll-behavior: smooth; }
+  #chat-area::-webkit-scrollbar { width: 4px; }
+  #chat-area::-webkit-scrollbar-track { background: transparent; }
+  #chat-area::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+
+  .message-wrap { max-width: 780px; margin: 0 auto; padding: 0 24px; }
+
+  /* Empty state */
+  #empty-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; text-align: center; padding: 40px;
+  }
+  .empty-logo {
+    font-family: 'Barlow Condensed', sans-serif; font-weight: 900;
+    font-size: 64px; letter-spacing: 0.05em; color: var(--accent);
+    line-height: 1; margin-bottom: 8px;
+  }
+  .empty-tagline { font-size: 13px; color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 40px; }
+  .suggestions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 500px; }
+  .suggestion {
+    padding: 8px 14px; border: 1px solid var(--border-bright);
+    border-radius: 3px; font-size: 12px; color: var(--muted2);
+    cursor: pointer; transition: all 0.15s; background: var(--surface);
+  }
+  .suggestion:hover { border-color: #555; color: var(--text); background: var(--accent-dim); }
+
+  /* Messages */
+  .msg { margin-bottom: 24px; }
+  .msg-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .msg-role {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em;
+  }
+  .msg.user .msg-role { color: var(--muted2); }
+  .msg.assistant .msg-role { color: var(--accent); }
+  .msg-time { font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+  .msg-content {
+    font-size: 14px; line-height: 1.7; color: var(--text);
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .msg.user .msg-content {
+    background: var(--user-bg); border: 1px solid var(--border);
+    border-radius: 4px; padding: 12px 16px; display: inline-block;
+    max-width: 100%;
+  }
+
+  /* Code blocks */
+  .msg-content pre {
+    background: #0d0d0d; border: 1px solid var(--border);
+    border-radius: 4px; padding: 14px 16px; margin: 10px 0;
+    overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  }
+  .msg-content code {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    background: #1a1a1a; padding: 1px 5px; border-radius: 2px;
+  }
+  .msg-content pre code { background: none; padding: 0; }
+
+  /* Thinking indicator */
+  .thinking { display: flex; gap: 4px; align-items: center; padding: 4px 0; }
+  .thinking span {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--muted); animation: pulse 1.4s infinite;
+  }
+  .thinking span:nth-child(2) { animation-delay: 0.2s; }
+  .thinking span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes pulse { 0%,80%,100%{opacity:0.3;transform:scale(0.8)} 40%{opacity:1;transform:scale(1)} }
+
+  /* INPUT */
+  #input-area {
+    border-top: 1px solid var(--border); padding: 16px 24px 20px;
+    background: var(--bg);
+  }
+  .input-wrap { max-width: 780px; margin: 0 auto; position: relative; }
+  #msg-input {
+    width: 100%; background: var(--surface); border: 1px solid var(--border-bright);
+    color: var(--text); padding: 12px 52px 12px 16px;
+    font-family: 'Barlow', sans-serif; font-size: 14px;
+    border-radius: 4px; resize: none; min-height: 48px; max-height: 180px;
+    outline: none; transition: border-color 0.15s; line-height: 1.5;
+  }
+  #msg-input:focus { border-color: #444; }
+  #msg-input::placeholder { color: var(--muted); }
+  #send-btn {
+    position: absolute; right: 10px; bottom: 10px;
+    width: 32px; height: 32px; background: var(--accent); border: none;
+    border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: opacity 0.15s;
+  }
+  #send-btn:hover { opacity: 0.85; }
+  #send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  #send-btn svg { width: 14px; height: 14px; }
+
+  .input-meta { display: flex; justify-content: space-between; margin-top: 8px; }
+  .input-hint { font-size: 10px; color: var(--muted); }
+
+  /* PANELS */
+  .panel { display: none; flex-direction: column; height: 100%; }
+  .panel.active { display: flex; }
+  .panel-inner { flex: 1; overflow-y: auto; padding: 32px; }
+  .panel-inner::-webkit-scrollbar { width: 4px; }
+  .panel-inner::-webkit-scrollbar-thumb { background: var(--border-bright); }
+
+  .panel-title {
+    font-family: 'Barlow Condensed', sans-serif; font-weight: 900;
+    font-size: 28px; letter-spacing: 0.04em; margin-bottom: 6px;
+  }
+  .panel-desc { font-size: 13px; color: var(--muted2); margin-bottom: 28px; }
+
+  /* Settings */
+  .setting-group { margin-bottom: 28px; }
+  .setting-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted2); margin-bottom: 8px; }
+  .setting-input {
+    width: 100%; background: var(--surface); border: 1px solid var(--border-bright);
+    color: var(--text); padding: 10px 14px; border-radius: 4px;
+    font-family: 'Barlow', sans-serif; font-size: 13px; outline: none;
+    transition: border-color 0.15s; max-width: 500px;
+  }
+  .setting-input:focus { border-color: #444; }
+  textarea.setting-input { resize: vertical; min-height: 90px; }
+  .setting-hint { font-size: 11px; color: var(--muted); margin-top: 5px; }
+  .save-btn {
+    padding: 10px 24px; background: var(--accent); color: #000;
+    font-family: 'Barlow Condensed', sans-serif; font-weight: 700;
+    font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase;
+    border: none; border-radius: 4px; cursor: pointer; transition: opacity 0.15s;
+  }
+  .save-btn:hover { opacity: 0.85; }
+
+  /* Models panel */
+  .models-grid { display: flex; flex-direction: column; gap: 10px; max-width: 680px; }
+  .model-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; padding: 14px 16px;
+    display: flex; align-items: center; gap: 14px;
+    transition: border-color 0.15s;
+  }
+  .model-card:hover { border-color: var(--border-bright); }
+  .model-card.active-model { border-color: #ffffff44; }
+  .model-info { flex: 1; }
+  .model-card-name { font-weight: 700; font-size: 14px; }
+  .model-card-desc { font-size: 12px; color: var(--muted2); margin-top: 2px; }
+  .model-card-size { font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 3px; }
+  .model-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .btn-use {
+    padding: 6px 14px; background: var(--accent); color: #000;
+    font-family: 'Barlow Condensed', sans-serif; font-weight: 700;
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    border: none; border-radius: 3px; cursor: pointer; transition: opacity 0.15s; white-space: nowrap;
+  }
+  .btn-use:hover { opacity: 0.85; }
+  .btn-use.active { background: #333; color: var(--muted2); cursor: default; }
+  .btn-pull {
+    padding: 6px 14px; background: transparent; color: var(--muted2);
+    font-family: 'Barlow Condensed', sans-serif; font-weight: 700;
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    border: 1px solid var(--border-bright); border-radius: 3px; cursor: pointer;
+    transition: all 0.15s; white-space: nowrap;
+  }
+  .btn-pull:hover { border-color: #555; color: var(--text); }
+  .btn-pull.pulling { color: var(--muted); cursor: default; }
+  .btn-delete {
+    padding: 6px 10px; background: transparent; color: var(--muted);
+    border: 1px solid var(--border); border-radius: 3px; cursor: pointer;
+    font-size: 12px; transition: all 0.15s;
+  }
+  .btn-delete:hover { border-color: var(--red); color: var(--red); }
+
+  .pull-progress { margin-top: 8px; }
+  .progress-bar { height: 2px; background: var(--border); border-radius: 1px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--accent); transition: width 0.3s; width: 0%; }
+  .progress-text { font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 4px; }
+
+  .installed-badge {
+    display: inline-block; font-size: 9px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--green); border: 1px solid var(--green);
+    padding: 1px 6px; border-radius: 2px; margin-left: 8px; vertical-align: middle;
+  }
+
+  /* Toast */
+  #toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(60px);
+    background: #1a1a1a; border: 1px solid var(--border-bright);
+    color: var(--text); padding: 10px 20px; border-radius: 4px;
+    font-size: 13px; transition: transform 0.25s; z-index: 999; white-space: nowrap;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* Modal */
+  #model-modal {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.85); z-index: 100;
+    align-items: center; justify-content: center;
+  }
+  #model-modal.open { display: flex; }
+  .modal-box {
+    background: var(--surface); border: 1px solid var(--border-bright);
+    border-radius: 6px; width: 540px; max-width: 95vw; max-height: 80vh;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .modal-title { font-family: 'Barlow Condensed', sans-serif; font-weight: 900; font-size: 18px; letter-spacing: 0.06em; }
+  .modal-close { background: none; border: none; color: var(--muted2); font-size: 20px; cursor: pointer; line-height: 1; }
+  .modal-close:hover { color: var(--text); }
+  .modal-body { overflow-y: auto; padding: 16px 24px; flex: 1; }
+  .modal-model-item {
+    display: flex; align-items: center; padding: 10px 12px; border-radius: 4px;
+    cursor: pointer; transition: background 0.12s; gap: 12px;
+  }
+  .modal-model-item:hover { background: var(--accent-dim); }
+  .modal-model-item.selected { background: var(--accent-dim); }
+  .modal-model-check { width: 16px; height: 16px; border: 1px solid var(--border-bright); border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .modal-model-check.on { background: var(--accent); border-color: var(--accent); }
+  .modal-model-check.on::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #000; }
+  .modal-model-info { flex: 1; }
+  .modal-model-name { font-size: 13px; font-weight: 700; }
+  .modal-model-meta { font-size: 11px; color: var(--muted2); margin-top: 1px; }
+
+  @media (max-width: 640px) {
+    #sidebar { position: absolute; }
+    .panel-inner { padding: 20px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">KYROX</div>
+      <div class="logo-sub">Your AI. Your Machine.</div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Model</div>
+      <button class="model-btn" id="model-btn">
+        <span class="model-name" id="sidebar-model-name">Loading...</span>
+        <span class="chevron">▼</span>
+      </button>
+      <div class="status-row">
+        <div class="dot" id="status-dot"></div>
+        <div class="status-text" id="status-text">Checking Ollama...</div>
+      </div>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <nav>
+      <div class="nav-item active" data-panel="chat" onclick="switchPanel('chat')">
+        <span class="nav-icon">💬</span> Chat
+      </div>
+      <div class="nav-item" data-panel="models" onclick="switchPanel('models')">
+        <span class="nav-icon">🧠</span> Models
+      </div>
+      <div class="nav-item" data-panel="settings" onclick="switchPanel('settings')">
+        <span class="nav-icon">⚙️</span> Settings
+      </div>
+    </nav>
+
+    <div class="sidebar-bottom">
+      <button class="new-chat-btn" onclick="newChat()">+ New Chat</button>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div id="main">
+    <div id="topbar">
+      <button id="toggle-sidebar" onclick="toggleSidebar()">☰</button>
+      <span class="topbar-title">KYROX AI</span>
+      <span class="topbar-model" id="topbar-model"></span>
+    </div>
+
+    <!-- CHAT PANEL -->
+    <div id="panel-chat" class="panel active">
+      <div id="chat-area">
+        <div class="message-wrap">
+          <div id="empty-state">
+            <div class="empty-logo">KYROX</div>
+            <div class="empty-tagline">Your AI. Your Machine. Your Rules.</div>
+            <div class="suggestions">
+              <div class="suggestion" onclick="fillInput('Write a Python script to rename files in a folder')">Rename files with Python</div>
+              <div class="suggestion" onclick="fillInput('Explain how neural networks work')">How neural networks work</div>
+              <div class="suggestion" onclick="fillInput('Help me debug this error: ')">Debug an error</div>
+              <div class="suggestion" onclick="fillInput('Write a short story about a hacker who finds a secret AI')">Write a short story</div>
+              <div class="suggestion" onclick="fillInput('What are the best practices for securing a Linux server?')">Linux security tips</div>
+              <div class="suggestion" onclick="fillInput('Summarize the key differences between React and Vue')">React vs Vue</div>
+            </div>
+          </div>
+          <div id="messages"></div>
+        </div>
+      </div>
+      <div id="input-area">
+        <div class="input-wrap">
+          <textarea id="msg-input" placeholder="Message Kyrox..." rows="1"
+            onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+          <button id="send-btn" onclick="sendMessage()" title="Send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        </div>
+        <div class="input-meta">
+          <span class="input-hint">Enter to send · Shift+Enter for new line</span>
+          <span class="input-hint" id="char-count"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODELS PANEL -->
+    <div id="panel-models" class="panel">
+      <div class="panel-inner">
+        <div class="panel-title">MODELS</div>
+        <div class="panel-desc">Download and switch between models. All run locally — no internet needed after download.</div>
+        <div class="models-grid" id="models-grid">
+          <div style="color:var(--muted);font-size:13px;">Loading models...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS PANEL -->
+    <div id="panel-settings" class="panel">
+      <div class="panel-inner">
+        <div class="panel-title">SETTINGS</div>
+        <div class="panel-desc">Configure your local AI.</div>
+
+        <div class="setting-group">
+          <div class="setting-label">System Prompt</div>
+          <textarea class="setting-input" id="s-system" rows="4" placeholder="You are a helpful assistant..."></textarea>
+          <div class="setting-hint">Defines the AI's personality and behavior.</div>
+        </div>
+
+        <div class="setting-group">
+          <div class="setting-label">Temperature <span id="s-temp-val" style="color:var(--muted2)">0.7</span></div>
+          <input type="range" class="setting-input" id="s-temperature" min="0" max="2" step="0.1" value="0.7"
+            oninput="document.getElementById('s-temp-val').textContent = this.value"
+            style="padding:4px 0; background:none; border:none; cursor:pointer; max-width:400px;">
+          <div class="setting-hint">Higher = more creative, lower = more precise.</div>
+        </div>
+
+        <div class="setting-group">
+          <div class="setting-label">Ollama URL</div>
+          <input type="text" class="setting-input" id="s-ollama-url" value="http://localhost:11434"/>
+          <div class="setting-hint">Leave default unless you're running Ollama on a different host.</div>
+        </div>
+
+        <div class="setting-group">
+          <div class="setting-label">Server Port</div>
+          <input type="number" class="setting-input" id="s-port" value="80" style="max-width:150px;"/>
+          <div class="setting-hint">Requires restart to take effect.</div>
+        </div>
+
+        <button class="save-btn" onclick="saveSettings()">Save Settings</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODEL PICKER MODAL -->
+<div id="model-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">SELECT MODEL</div>
+      <button class="modal-close" onclick="closeModelModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+let config = {};
+let messages = [];
+let isStreaming = false;
+let sidebarVisible = true;
+
+async function init() {
+  try {
+    const r = await fetch('/kyrox/api/config');
+    config = await r.json();
+    updateUI();
+    checkStatus();
+    renderModels();
+    populateSettings();
+  } catch(e) {
+    showToast('Could not connect to Kyrox server');
+  }
+}
+
+function updateUI() {
+  const name = getModelDisplayName(config.model);
+  document.getElementById('sidebar-model-name').textContent = name;
+  document.getElementById('topbar-model').textContent = config.model;
+}
+
+function getModelDisplayName(id) {
+  const m = (config.available_models || []).find(x => x.id === id);
+  return m ? m.name : id;
+}
+
+async function checkStatus() {
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  try {
+    const r = await fetch('/kyrox/api/status');
+    const d = await r.json();
+    if (d.ollama) {
+      dot.className = 'dot online';
+      txt.textContent = 'Ollama running';
+    } else {
+      dot.className = 'dot offline';
+      txt.textContent = 'Ollama not found';
+    }
+  } catch {
+    dot.className = 'dot offline';
+    txt.textContent = 'Server error';
+  }
+  setTimeout(checkStatus, 10000);
+}
+
+function switchPanel(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  document.querySelector(`[data-panel="${name}"]`).classList.add('active');
+  if (name === 'models') renderModels();
+}
+
+function toggleSidebar() {
+  sidebarVisible = !sidebarVisible;
+  document.getElementById('sidebar').classList.toggle('hidden', !sidebarVisible);
+}
+
+function newChat() {
+  messages = [];
+  document.getElementById('messages').innerHTML = '';
+  document.getElementById('empty-state').style.display = '';
+  switchPanel('chat');
+}
+
+function fillInput(text) {
+  const inp = document.getElementById('msg-input');
+  inp.value = text;
+  inp.focus();
+  autoResize(inp);
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 180) + 'px';
+}
+
+async function sendMessage() {
+  if (isStreaming) return;
+  const inp = document.getElementById('msg-input');
+  const text = inp.value.trim();
+  if (!text) return;
+
+  inp.value = '';
+  inp.style.height = 'auto';
+  document.getElementById('empty-state').style.display = 'none';
+
+  messages.push({ role: 'user', content: text });
+  appendMessage('user', text);
+
+  const thinkId = 'think-' + Date.now();
+  appendThinking(thinkId);
+
+  isStreaming = true;
+  document.getElementById('send-btn').disabled = true;
+
+  let full = '';
+  const msgId = 'msg-' + Date.now();
+
+  try {
+    const resp = await fetch('/kyrox/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages,
+        model: config.model,
+        system_prompt: config.system_prompt,
+        temperature: config.temperature,
+      })
+    });
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let firstToken = true;
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const d = JSON.parse(line.slice(6));
+          if (d.error) { showToast('Error: ' + d.error); break; }
+          if (firstToken) {
+            removeElement(thinkId);
+            appendMessageEl(msgId);
+            firstToken = false;
+          }
+          if (d.token) {
+            full += d.token;
+            updateMessageEl(msgId, full);
+          }
+        } catch {}
+      }
+    }
+  } catch (e) {
+    removeElement(thinkId);
+    showToast('Connection error');
+  }
+
+  messages.push({ role: 'assistant', content: full });
+  isStreaming = false;
+  document.getElementById('send-btn').disabled = false;
+  scrollBottom();
+}
+
+function appendMessage(role, content) {
+  const wrap = document.getElementById('messages');
+  const el = document.createElement('div');
+  el.className = `msg ${role}`;
+  const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  el.innerHTML = `
+    <div class="msg-header">
+      <span class="msg-role">${role === 'user' ? 'You' : 'Kyrox'}</span>
+      <span class="msg-time">${time}</span>
+    </div>
+    <div class="msg-content">${escapeHtml(content)}</div>
+  `;
+  wrap.appendChild(el);
+  scrollBottom();
+}
+
+function appendMessageEl(id) {
+  const wrap = document.getElementById('messages');
+  const el = document.createElement('div');
+  el.className = 'msg assistant';
+  el.id = id;
+  const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  el.innerHTML = `
+    <div class="msg-header">
+      <span class="msg-role">Kyrox</span>
+      <span class="msg-time">${time}</span>
+    </div>
+    <div class="msg-content" id="content-${id}"></div>
+  `;
+  wrap.appendChild(el);
+}
+
+function updateMessageEl(id, text) {
+  const el = document.getElementById('content-' + id);
+  if (el) {
+    el.innerHTML = formatContent(text);
+    scrollBottom();
+  }
+}
+
+function appendThinking(id) {
+  const wrap = document.getElementById('messages');
+  const el = document.createElement('div');
+  el.className = 'msg assistant';
+  el.id = id;
+  el.innerHTML = `
+    <div class="msg-header"><span class="msg-role">Kyrox</span></div>
+    <div class="thinking"><span></span><span></span><span></span></div>
+  `;
+  wrap.appendChild(el);
+  scrollBottom();
+}
+
+function removeElement(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+function formatContent(text) {
+  // Code blocks
+  text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
+    `<pre><code>${escapeHtml(code.trim())}</code></pre>`);
+  // Inline code
+  text = text.replace(/`([^`]+)`/g, (_, c) => `<code>${escapeHtml(c)}</code>`);
+  // Bold
+  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // Italic
+  text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  return text;
+}
+
+function escapeHtml(t) {
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function scrollBottom() {
+  const area = document.getElementById('chat-area');
+  area.scrollTop = area.scrollHeight;
+}
+
+// MODELS
+async function renderModels() {
+  const grid = document.getElementById('models-grid');
+  const r = await fetch('/kyrox/api/models');
+  const data = await r.json();
+  const installed = data.installed || [];
+
+  grid.innerHTML = data.available.map(m => {
+    const isInstalled = installed.some(i => i === m.id || i.startsWith(m.id.split(':')[0]));
+    const isCurrent = config.model === m.id;
+    return `
+    <div class="model-card ${isCurrent ? 'active-model' : ''}" id="card-${m.id.replace(/[:.]/g,'_')}">
+      <div class="model-info">
+        <div class="model-card-name">${m.name}${isInstalled ? '<span class="installed-badge">Installed</span>' : ''}</div>
+        <div class="model-card-desc">${m.desc}</div>
+        <div class="model-card-size">${m.size}</div>
+        <div class="pull-progress" id="progress-${m.id.replace(/[:.]/g,'_')}" style="display:none">
+          <div class="progress-bar"><div class="progress-fill" id="fill-${m.id.replace(/[:.]/g,'_')}"></div></div>
+          <div class="progress-text" id="ptext-${m.id.replace(/[:.]/g,'_')}">Starting...</div>
+        </div>
+      </div>
+      <div class="model-actions">
+        ${isInstalled ? `<button class="btn-use ${isCurrent?'active':''}" onclick="useModel('${m.id}')">${isCurrent?'Active':'Use'}</button>` : ''}
+        ${!isInstalled ? `<button class="btn-pull" id="pull-${m.id.replace(/[:.]/g,'_')}" onclick="pullModel('${m.id}')">Download</button>` : ''}
+        ${isInstalled && !isCurrent ? `<button class="btn-delete" onclick="deleteModel('${m.id}')" title="Remove">✕</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function pullModel(id) {
+  const safe = id.replace(/[:.]/g,'_');
+  const btn = document.getElementById('pull-' + safe);
+  const prog = document.getElementById('progress-' + safe);
+  const fill = document.getElementById('fill-' + safe);
+  const ptext = document.getElementById('ptext-' + safe);
+  if (btn) { btn.textContent = 'Downloading...'; btn.classList.add('pulling'); btn.disabled = true; }
+  if (prog) prog.style.display = 'block';
+
+  const resp = await fetch('/kyrox/api/pull', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: id })
+  });
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      try {
+        const d = JSON.parse(line.slice(6));
+        if (d.total && d.completed) {
+          const pct = Math.round((d.completed / d.total) * 100);
+          if (fill) fill.style.width = pct + '%';
+          if (ptext) ptext.textContent = `${pct}% — ${d.status || ''}`;
+        } else if (d.status) {
+          if (ptext) ptext.textContent = d.status;
+        }
+      } catch {}
+    }
+  }
+
+  showToast(`${id} downloaded!`);
+  renderModels();
+}
+
+async function useModel(id) {
+  config.model = id;
+  await fetch('/kyrox/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: id })
+  });
+  updateUI();
+  renderModels();
+  showToast(`Switched to ${id}`);
+}
+
+async function deleteModel(id) {
+  if (!confirm(`Remove ${id}?`)) return;
+  await fetch('/kyrox/api/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: id })
+  });
+  showToast(`${id} removed`);
+  renderModels();
+}
+
+// MODEL PICKER MODAL
+document.getElementById('model-btn').onclick = openModelModal;
+
+function openModelModal() {
+  const modal = document.getElementById('model-modal');
+  const body = document.getElementById('modal-body');
+  const installed = config.installed_models || [];
+  const available = config.available_models || [];
+
+  const installedModels = available.filter(m => installed.some(i => i === m.id || i.startsWith(m.id)));
+  const list = installedModels.length ? installedModels : available;
+
+  body.innerHTML = list.map(m => `
+    <div class="modal-model-item ${config.model === m.id ? 'selected' : ''}" onclick="selectModel('${m.id}')">
+      <div class="modal-model-check ${config.model === m.id ? 'on' : ''}"></div>
+      <div class="modal-model-info">
+        <div class="modal-model-name">${m.name}</div>
+        <div class="modal-model-meta">${m.size} · ${m.desc}</div>
+      </div>
+    </div>
+  `).join('');
+
+  modal.classList.add('open');
+}
+
+function closeModelModal() {
+  document.getElementById('model-modal').classList.remove('open');
+}
+
+async function selectModel(id) {
+  await useModel(id);
+  closeModelModal();
+}
+
+document.getElementById('model-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeModelModal();
+});
+
+// SETTINGS
+function populateSettings() {
+  document.getElementById('s-system').value = config.system_prompt || '';
+  document.getElementById('s-temperature').value = config.temperature || 0.7;
+  document.getElementById('s-temp-val').textContent = config.temperature || 0.7;
+  document.getElementById('s-ollama-url').value = config.ollama_url || 'http://localhost:11434';
+  document.getElementById('s-port').value = config.port || 7337;
+}
+
+async function saveSettings() {
+  const update = {
+    system_prompt: document.getElementById('s-system').value,
+    temperature: parseFloat(document.getElementById('s-temperature').value),
+    ollama_url: document.getElementById('s-ollama-url').value,
+    port: parseInt(document.getElementById('s-port').value),
+  };
+  await fetch('/kyrox/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(update)
+  });
+  Object.assign(config, update);
+  showToast('Settings saved');
+}
+
+// TOAST
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+init();
+</script>
+</body>
+</html>
