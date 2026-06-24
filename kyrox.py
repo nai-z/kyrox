@@ -23,6 +23,7 @@ from pathlib import Path
 KYROX_DIR = Path(__file__).parent
 STATIC_DIR = KYROX_DIR / "static"
 CONFIG_FILE = KYROX_DIR / "config.json"
+CONVERSATIONS_FILE = KYROX_DIR / "conversations.json"
 
 SYSTEM_PROMPT = """You are Kyrox — a sharp, no-nonsense local AI that runs entirely on the user's machine. No cloud, no tracking, no subscriptions. Just raw intelligence, offline.
 
@@ -46,7 +47,10 @@ When the user asks you to do something on their PC, output an ACTION block on it
 ACTION:{"type": "open_app", "app": "chrome"}
 
 Available actions:
-- open_app: {"type": "open_app", "app": "chrome|notepad|explorer|spotify|discord|vscode|calc|cmd|powershell|paint|roblox|steam|vlc|word|excel"}
+- open_app: {"type": "open_app", "app": "chrome|notepad|explorer|spotify|discord|vscode|calc|cmd|powershell|paint|roblox|steam|vlc|word|excel", "url": "https://... (optional — include if user wants to open a specific website)"}
+  → If user says "open wikipedia", use: {"type": "open_app", "app": "firefox", "url": "https://wikipedia.org"}
+  → If user says "open youtube on chrome", use: {"type": "open_app", "app": "chrome", "url": "https://youtube.com"}
+  → If no URL is mentioned, omit the url field entirely.
 - web_search: {"type": "web_search", "query": "search query"}
 - open_url: {"type": "open_url", "url": "https://..."}
 - screenshot: {"type": "screenshot"}
@@ -84,6 +88,11 @@ AVAILABLE_MODELS = [
 ]
 
 # ── App finder ──────────────────────────────────────────────────────────────
+def _find_roblox():
+    base = os.path.expandvars(r"%LOCALAPPDATA%\Roblox\Versions")
+    matches = glob.glob(os.path.join(base, "**", "RobloxPlayerBeta.exe"), recursive=True)
+    return matches[0] if matches else "RobloxPlayerBeta"
+
 APP_MAP = {
     "chrome":        [r"C:\Program Files\Google\Chrome\Application\chrome.exe", "chrome"],
     "firefox":       ["firefox"],
@@ -98,7 +107,7 @@ APP_MAP = {
     "powershell":    ["powershell"],
     "discord":       [os.path.expandvars(r"%LOCALAPPDATA%\Discord\Update.exe"), "--processStart", "Discord.exe"],
     "spotify":       [os.path.expandvars(r"%APPDATA%\Spotify\Spotify.exe")],
-    "roblox":        [os.path.expandvars(r"%LOCALAPPDATA%\Roblox\Versions\RobloxPlayerLauncher.exe")],
+    "roblox":        [_find_roblox()],
     "vscode":        ["code"],
     "vs code":       ["code"],
     "steam":         [r"C:\Program Files (x86)\Steam\steam.exe", "steam"],
@@ -116,7 +125,7 @@ def find_and_launch(app_name: str) -> str:
     candidates = APP_MAP.get(app_name, [app_name])
 
     for candidate in candidates:
-        candidate = os.path.expandvars(candidate)
+        candidate = os.path.expandvars(str(candidate))
         try:
             if os.path.isfile(candidate):
                 subprocess.Popen([candidate], shell=False)
@@ -150,7 +159,12 @@ def execute_action(action: dict) -> dict:
     try:
         if atype == "open_app":
             app = action.get("app", "").lower()
+            url = action.get("url", "")
             msg = find_and_launch(app)
+            if url:
+                time.sleep(1.5)
+                webbrowser.open(url)
+                return {"result": f"✓ Opened {app} → {url}"}
             return {"result": msg}
 
         elif atype == "web_search":
@@ -233,6 +247,7 @@ def execute_action(action: dict) -> dict:
         return {"result": f"✗ {atype} failed: {e}"}
 
 
+# ── Config ───────────────────────────────────────────────────────────────────
 def load_config():
     if CONFIG_FILE.exists():
         try:
@@ -252,6 +267,23 @@ def save_config(cfg):
         json.dump(cfg, f, indent=2)
 
 
+# ── Conversations ─────────────────────────────────────────────────────────────
+def load_conversations():
+    if CONVERSATIONS_FILE.exists():
+        try:
+            with open(CONVERSATIONS_FILE, encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
+
+def save_conversations(convs):
+    with open(CONVERSATIONS_FILE, "w", encoding="utf-8") as f:
+        json.dump(convs, f, ensure_ascii=False, indent=2)
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 def get_local_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -282,6 +314,7 @@ def get_installed_models(ollama_url):
     return []
 
 
+# ── HTTP Handler ──────────────────────────────────────────────────────────────
 class KyroxHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
@@ -311,7 +344,7 @@ class KyroxHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
@@ -334,6 +367,20 @@ class KyroxHandler(BaseHTTPRequestHandler):
         elif p == "/kyrox/api/status":
             result = ollama_request("/api/tags", ollama_url=cfg["ollama_url"])
             self.send_json({"ollama": result is not None})
+        elif p == "/kyrox/api/conversations":
+            convs = load_conversations()
+            summary = [
+                {"id": v["id"], "title": v["title"], "updated_at": v["updated_at"]}
+                for v in convs.values()
+            ]
+            self.send_json({"conversations": summary})
+        elif p.startswith("/kyrox/api/conversations/"):
+            cid = p.split("/")[-1]
+            convs = load_conversations()
+            if cid in convs:
+                self.send_json(convs[cid])
+            else:
+                self.send_json({"error": "not found"}, 404)
         else:
             self.send_response(404)
             self.end_headers()
@@ -354,6 +401,21 @@ class KyroxHandler(BaseHTTPRequestHandler):
             action = body.get("action", {})
             result = execute_action(action)
             self.send_json(result)
+
+        elif self.path == "/kyrox/api/conversations":
+            cid = body.get("id", "")
+            if not cid:
+                self.send_json({"error": "no id"}, 400)
+                return
+            convs = load_conversations()
+            convs[cid] = {
+                "id": cid,
+                "title": body.get("title", "Conversation"),
+                "messages": body.get("messages", []),
+                "updated_at": body.get("updated_at", int(time.time() * 1000))
+            }
+            save_conversations(convs)
+            self.send_json({"ok": True})
 
         elif self.path == "/kyrox/api/chat":
             messages = body.get("messages", [])
@@ -394,7 +456,6 @@ class KyroxHandler(BaseHTTPRequestHandler):
                             full_response += token
 
                             if done:
-                                # Execute all ACTION blocks
                                 action_results = []
                                 for match in re.finditer(r'ACTION:(\{[^}]+\})', full_response, re.DOTALL):
                                     try:
@@ -404,7 +465,6 @@ class KyroxHandler(BaseHTTPRequestHandler):
                                     except:
                                         pass
 
-                                # Check for NEED_FOLDER
                                 folder_match = re.search(r'NEED_FOLDER:(.+?)(?:\n|$)', full_response)
                                 if folder_match:
                                     reason = folder_match.group(1).strip()
@@ -467,6 +527,18 @@ class KyroxHandler(BaseHTTPRequestHandler):
             result = ollama_request("/api/delete", {"name": model}, "DELETE", cfg["ollama_url"])
             self.send_json({"ok": result is not None})
 
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_DELETE(self):
+        p = self.path.rstrip("/")
+        if p.startswith("/kyrox/api/conversations/"):
+            cid = p.split("/")[-1]
+            convs = load_conversations()
+            convs.pop(cid, None)
+            save_conversations(convs)
+            self.send_json({"ok": True})
         else:
             self.send_response(404)
             self.end_headers()
