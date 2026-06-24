@@ -1,662 +1,646 @@
-cat > /mnt/user-data/outputs/index.html << 'ENDOFFILE'
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>KYROX</title>
+<title>KYROX AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,900;1,700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;700;900&family=Barlow+Condensed:wght@700;900&family=JetBrains+Mono:wght@400;500&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --bg: #0a0a0a; --surface: #111; --border: #1e1e1e; --border-bright: #2a2a2a;
-    --text: #e8e8e8; --muted: #555; --muted2: #888; --accent: #fff;
-    --accent-dim: rgba(255,255,255,0.06); --red: #ff3b3b; --green: #3bff8a; --user-bg: #1a1a1a;
+    --bg: #0d0d0d; --bg2: #131313; --bg3: #1a1a1a;
+    --border: #252525; --text: #f0ede6; --muted: #6b6b6b; --dim: #999;
   }
-  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Barlow', sans-serif; overflow: hidden; }
-  #app { display: flex; height: 100vh; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; overflow: hidden; }
+  .app { display: flex; height: 100vh; }
 
   /* SIDEBAR */
-  #sidebar { width: 260px; min-width: 260px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; transition: transform 0.2s; z-index: 10; }
-  #sidebar.hidden { transform: translateX(-260px); position: absolute; height: 100%; }
-  .sidebar-header { padding: 24px 20px 16px; border-bottom: 1px solid var(--border); }
-  .logo { font-family: 'Barlow Condensed', sans-serif; font-size: 22px; font-weight: 900; letter-spacing: 0.08em; color: var(--accent); }
-  .logo-sub { font-size: 10px; color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase; margin-top: 2px; }
-  .sidebar-section { padding: 16px 20px 8px; }
-  .sidebar-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 10px; }
-  .model-btn { width: 100%; background: var(--accent-dim); border: 1px solid var(--border-bright); color: var(--text); padding: 10px 12px; border-radius: 4px; font-family: 'Barlow', sans-serif; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; transition: border-color 0.15s; }
-  .model-btn:hover { border-color: #444; }
-  .status-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
-  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
-  .dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); }
-  .dot.offline { background: var(--red); }
-  .status-text { font-size: 11px; color: var(--muted2); }
-  .sidebar-divider { height: 1px; background: var(--border); margin: 8px 20px; }
-  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; font-size: 13px; color: var(--muted2); cursor: pointer; transition: color 0.15s, background 0.15s; border-left: 2px solid transparent; }
-  .nav-item:hover { color: var(--text); background: var(--accent-dim); }
-  .nav-item.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-dim); }
-  .nav-icon { width: 16px; text-align: center; font-size: 14px; }
-  .sidebar-bottom { margin-top: auto; padding: 16px 20px; border-top: 1px solid var(--border); }
-  .new-chat-btn { width: 100%; padding: 10px; background: var(--accent); color: #000; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; border: none; border-radius: 4px; cursor: pointer; transition: opacity 0.15s; }
+  .sidebar {
+    width: 260px; min-width: 260px; background: var(--bg);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    padding: 28px 20px 20px; gap: 0; overflow: hidden;
+  }
+  .logo {
+    font-family: 'Playfair Display', serif; font-weight: 900;
+    font-size: 20px; letter-spacing: 0.08em; color: var(--text);
+    text-transform: uppercase; margin-bottom: 28px; flex-shrink: 0;
+  }
+  .logo span {
+    display: block; font-family: 'Inter', sans-serif; font-weight: 300;
+    font-size: 9px; letter-spacing: 0.2em; color: var(--muted);
+    margin-top: 2px; text-transform: uppercase;
+  }
+  .sidebar-label {
+    font-size: 9px; font-weight: 500; letter-spacing: 0.25em;
+    color: var(--muted); text-transform: uppercase; margin-bottom: 6px; flex-shrink: 0;
+  }
+  select, .btn-ghost {
+    width: 100%; background: var(--bg2); border: 1px solid var(--border);
+    color: var(--text); font-family: 'Inter', sans-serif; font-size: 13px;
+    padding: 9px 12px; appearance: none; cursor: pointer; outline: none;
+    transition: border-color 0.15s;
+  }
+  select:hover, .btn-ghost:hover { border-color: #404040; }
+  .select-wrap { position: relative; margin-bottom: 20px; flex-shrink: 0; }
+  .select-wrap::after {
+    content: ''; position: absolute; right: 12px; top: 50%;
+    transform: translateY(-50%); width: 0; height: 0;
+    border-left: 4px solid transparent; border-right: 4px solid transparent;
+    border-top: 5px solid var(--muted); pointer-events: none;
+  }
+  .status-dot {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; color: var(--muted); margin-bottom: 24px; flex-shrink: 0;
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: #555; flex-shrink: 0; }
+  .dot.online { background: #4ade80; box-shadow: 0 0 6px #4ade8066; }
+
+  /* HISTORY */
+  .history-label { flex-shrink: 0; }
+  .history-list {
+    flex: 1; overflow-y: auto; display: flex; flex-direction: column;
+    gap: 1px; margin-bottom: 16px;
+  }
+  .history-list::-webkit-scrollbar { width: 3px; }
+  .history-list::-webkit-scrollbar-thumb { background: var(--border); }
+  .history-item {
+    padding: 9px 10px; cursor: pointer; border: 1px solid transparent;
+    transition: border-color 0.1s; position: relative;
+  }
+  .history-item:hover { border-color: var(--border); }
+  .history-item.active { border-color: var(--border); background: var(--bg2); }
+  .history-item-title {
+    font-size: 12px; color: var(--dim); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; padding-right: 20px;
+  }
+  .history-item-date {
+    font-size: 9px; color: var(--muted); margin-top: 2px;
+    letter-spacing: 0.05em;
+  }
+  .history-delete {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: 12px; opacity: 0; transition: opacity 0.1s; padding: 2px 4px;
+  }
+  .history-item:hover .history-delete { opacity: 1; }
+  .history-delete:hover { color: var(--text); }
+  .history-empty {
+    font-size: 11px; color: var(--muted); padding: 8px 2px; font-style: italic;
+  }
+
+  /* SIDEBAR BOTTOM */
+  .sidebar-bottom { flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; }
+  .new-chat-btn {
+    width: 100%; background: var(--text); color: var(--bg); border: none;
+    font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 500;
+    letter-spacing: 0.15em; text-transform: uppercase; padding: 11px;
+    cursor: pointer; transition: opacity 0.15s;
+  }
   .new-chat-btn:hover { opacity: 0.85; }
 
   /* MAIN */
-  #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-  #topbar { height: 52px; min-height: 52px; border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 20px; gap: 12px; background: var(--bg); }
-  #toggle-sidebar { background: none; border: none; color: var(--muted2); font-size: 18px; cursor: pointer; padding: 4px 6px; }
-  #toggle-sidebar:hover { color: var(--text); }
-  .topbar-title { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 15px; letter-spacing: 0.08em; color: var(--muted2); }
-  .topbar-model { margin-left: auto; font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .topbar {
+    border-bottom: 1px solid var(--border); padding: 0 32px; height: 56px;
+    display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+  }
+  .topbar-title { font-size: 10px; font-weight: 500; letter-spacing: 0.3em; color: var(--muted); text-transform: uppercase; }
+  .topbar-model { font-size: 11px; color: var(--muted); letter-spacing: 0.05em; }
 
   /* CHAT */
-  #chat-area { flex: 1; overflow-y: auto; padding: 32px 0; scroll-behavior: smooth; }
-  #chat-area::-webkit-scrollbar { width: 4px; }
-  #chat-area::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
-  .message-wrap { max-width: 780px; margin: 0 auto; padding: 0 24px; }
+  .chat-wrap {
+    flex: 1; overflow-y: auto; padding: 48px 32px;
+    display: flex; flex-direction: column; gap: 0; scroll-behavior: smooth;
+  }
+  .chat-wrap::-webkit-scrollbar { width: 4px; }
+  .chat-wrap::-webkit-scrollbar-thumb { background: var(--border); }
 
-  #empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; padding: 40px; }
-  .empty-logo { font-family: 'Barlow Condensed', sans-serif; font-weight: 900; font-size: 64px; letter-spacing: 0.05em; color: var(--accent); line-height: 1; margin-bottom: 8px; }
-  .empty-tagline { font-size: 13px; color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 40px; }
-  .suggestions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 560px; }
-  .suggestion { padding: 8px 14px; border: 1px solid var(--border-bright); border-radius: 3px; font-size: 12px; color: var(--muted2); cursor: pointer; transition: all 0.15s; background: var(--surface); }
-  .suggestion:hover { border-color: #555; color: var(--text); background: var(--accent-dim); }
+  /* HERO */
+  .hero {
+    flex: 1; display: flex; flex-direction: column; justify-content: center;
+    padding: 48px 32px 0; pointer-events: none;
+  }
+  .hero-eyebrow {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 10px; letter-spacing: 0.25em; color: var(--muted);
+    text-transform: uppercase; margin-bottom: 24px;
+  }
+  .hero-eyebrow::before { content: ''; display: block; width: 28px; height: 1px; background: var(--muted); }
+  .hero-headline {
+    font-family: 'Playfair Display', serif; font-weight: 900;
+    font-size: clamp(52px, 7vw, 96px); line-height: 0.95;
+    letter-spacing: -0.01em; color: var(--text); text-transform: uppercase;
+  }
+  .hero-headline em { font-style: italic; font-weight: 700; color: #5a5a5a; }
 
-  .msg { margin-bottom: 24px; }
-  .msg-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-  .msg-role { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; }
-  .msg.user .msg-role { color: var(--muted2); }
-  .msg.assistant .msg-role { color: var(--accent); }
-  .msg-time { font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
-  .msg-content { font-size: 14px; line-height: 1.7; color: var(--text); white-space: pre-wrap; word-break: break-word; }
-  .msg.user .msg-content { background: var(--user-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; display: inline-block; max-width: 100%; }
-  .msg-content pre { background: #0d0d0d; border: 1px solid var(--border); border-radius: 4px; padding: 14px 16px; margin: 10px 0; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
-  .msg-content code { font-family: 'JetBrains Mono', monospace; font-size: 12px; background: #1a1a1a; padding: 1px 5px; border-radius: 2px; }
-  .msg-content pre code { background: none; padding: 0; }
-
-  /* Action badges */
-  .action-badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(59,255,138,0.08); border: 1px solid rgba(59,255,138,0.2); color: var(--green); padding: 5px 10px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; font-size: 11px; margin-bottom: 6px; display: block; }
-  .action-badge.error { background: rgba(255,59,59,0.08); border-color: rgba(255,59,59,0.2); color: var(--red); }
-
-  /* Folder picker card */
-  .folder-card { background: var(--surface); border: 1px solid #3b8aff44; border-radius: 6px; padding: 14px 16px; margin-bottom: 10px; }
-  .folder-card-title { font-size: 12px; font-weight: 700; color: #3b8aff; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
-  .folder-card-reason { font-size: 13px; color: var(--muted2); margin-bottom: 12px; }
-  .folder-card-input { display: flex; gap: 8px; }
-  .folder-path-input { flex: 1; background: var(--bg); border: 1px solid var(--border-bright); color: var(--text); padding: 8px 12px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; font-size: 12px; outline: none; }
-  .folder-path-input:focus { border-color: #3b8aff; }
-  .folder-confirm-btn { padding: 8px 16px; background: #3b8aff; color: #fff; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; border: none; border-radius: 3px; cursor: pointer; transition: opacity 0.15s; white-space: nowrap; }
-  .folder-confirm-btn:hover { opacity: 0.85; }
-
-  .thinking { display: flex; gap: 4px; align-items: center; padding: 4px 0; }
-  .thinking span { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); animation: pulse 1.4s infinite; }
-  .thinking span:nth-child(2) { animation-delay: 0.2s; }
-  .thinking span:nth-child(3) { animation-delay: 0.4s; }
-  @keyframes pulse { 0%,80%,100%{opacity:0.3;transform:scale(0.8)} 40%{opacity:1;transform:scale(1)} }
+  /* MESSAGES */
+  .msg { display: flex; flex-direction: column; gap: 4px; padding: 20px 0; border-bottom: 1px solid var(--border); }
+  .msg:last-child { border-bottom: none; }
+  .msg-role {
+    font-size: 9px; font-weight: 500; letter-spacing: 0.25em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
+  }
+  .msg.user .msg-role { color: var(--dim); }
+  .msg-content {
+    font-size: 14px; line-height: 1.75; color: var(--text);
+    font-weight: 300; max-width: 720px; white-space: pre-wrap; word-break: break-word;
+  }
+  .msg.user .msg-content { color: #c8c5be; }
+  .action-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--muted); border: 1px solid var(--border);
+    padding: 4px 10px; margin-bottom: 10px; width: fit-content;
+  }
+  .action-badge::before { content: '↗'; font-size: 10px; }
+  .folder-prompt {
+    background: var(--bg2); border: 1px solid var(--border);
+    padding: 16px; max-width: 480px; margin-top: 8px;
+  }
+  .folder-prompt p { font-size: 13px; color: var(--dim); margin-bottom: 12px; }
+  .folder-input-row { display: flex; gap: 8px; }
+  .folder-input-row input {
+    flex: 1; background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text); font-family: 'Inter', sans-serif; font-size: 13px;
+    padding: 8px 12px; outline: none;
+  }
+  .folder-input-row button {
+    background: var(--text); color: var(--bg); border: none;
+    font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 500;
+    letter-spacing: 0.1em; text-transform: uppercase; padding: 8px 14px; cursor: pointer;
+  }
+  .typing { display: flex; gap: 5px; align-items: center; padding: 4px 0; }
+  .typing span { width: 4px; height: 4px; background: var(--muted); border-radius: 50%; animation: blink 1.2s infinite; }
+  .typing span:nth-child(2) { animation-delay: 0.2s; }
+  .typing span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes blink { 0%,80%,100%{opacity:0.2} 40%{opacity:1} }
 
   /* INPUT */
-  #input-area { border-top: 1px solid var(--border); padding: 16px 24px 20px; background: var(--bg); }
-  .input-wrap { max-width: 780px; margin: 0 auto; position: relative; }
-  #msg-input { width: 100%; background: var(--surface); border: 1px solid var(--border-bright); color: var(--text); padding: 12px 90px 12px 16px; font-family: 'Barlow', sans-serif; font-size: 14px; border-radius: 4px; resize: none; min-height: 48px; max-height: 180px; outline: none; transition: border-color 0.15s; line-height: 1.5; }
-  #msg-input:focus { border-color: #444; }
-  #msg-input::placeholder { color: var(--muted); }
-  .input-btns { position: absolute; right: 8px; bottom: 8px; display: flex; gap: 6px; }
-  #mic-btn { width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border-bright); border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: all 0.15s; color: var(--muted2); }
-  #mic-btn:hover { border-color: #555; color: var(--text); }
-  #mic-btn.listening { background: rgba(255,59,59,0.15); border-color: var(--red); color: var(--red); animation: mic-pulse 1s infinite; }
-  @keyframes mic-pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
-  #send-btn { width: 32px; height: 32px; background: var(--accent); border: none; border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: opacity 0.15s; }
-  #send-btn:hover { opacity: 0.85; }
-  #send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-  #send-btn svg { width: 14px; height: 14px; }
-  .input-meta { display: flex; justify-content: space-between; margin-top: 8px; }
-  .input-hint { font-size: 10px; color: var(--muted); }
+  .input-area { border-top: 1px solid var(--border); padding: 20px 32px 24px; flex-shrink: 0; }
+  .input-row {
+    display: flex; align-items: flex-end;
+    border: 1px solid var(--border); background: var(--bg2); transition: border-color 0.15s;
+  }
+  .input-row:focus-within { border-color: #404040; }
+  textarea {
+    flex: 1; background: transparent; border: none; outline: none;
+    color: var(--text); font-family: 'Inter', sans-serif;
+    font-size: 14px; font-weight: 300; line-height: 1.6;
+    padding: 16px 20px; resize: none; max-height: 200px;
+  }
+  textarea::placeholder { color: var(--muted); }
+  .send-btn {
+    background: transparent; border: none; border-left: 1px solid var(--border);
+    color: var(--muted); cursor: pointer; padding: 16px 20px;
+    font-size: 16px; transition: color 0.15s; align-self: stretch;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .send-btn:hover { color: var(--text); }
+  .send-btn svg { width: 16px; height: 16px; }
+  .input-hint { margin-top: 10px; font-size: 10px; color: var(--muted); letter-spacing: 0.1em; display: flex; gap: 16px; }
 
-  #voice-indicator { display: none; align-items: center; gap: 8px; padding: 8px 16px; background: rgba(255,59,59,0.08); border: 1px solid rgba(255,59,59,0.2); border-radius: 4px; margin-bottom: 8px; font-size: 12px; color: var(--red); max-width: 780px; margin-left: auto; margin-right: auto; }
-  #voice-indicator.active { display: flex; }
-  .voice-waves { display: flex; gap: 2px; align-items: center; }
-  .voice-waves span { width: 3px; background: var(--red); border-radius: 2px; animation: wave 0.8s infinite; }
-  .voice-waves span:nth-child(1) { height: 8px; } .voice-waves span:nth-child(2) { height: 14px; animation-delay:.1s; } .voice-waves span:nth-child(3) { height: 10px; animation-delay:.2s; } .voice-waves span:nth-child(4) { height: 16px; animation-delay:.15s; } .voice-waves span:nth-child(5) { height: 8px; animation-delay:.05s; }
-  @keyframes wave { 0%,100%{transform:scaleY(0.5)} 50%{transform:scaleY(1)} }
-
-  /* PANELS */
-  .panel { display: none; flex-direction: column; height: 100%; }
-  .panel.active { display: flex; }
-  .panel-inner { flex: 1; overflow-y: auto; padding: 32px; }
-  .panel-inner::-webkit-scrollbar { width: 4px; }
-  .panel-inner::-webkit-scrollbar-thumb { background: var(--border-bright); }
-  .panel-title { font-family: 'Barlow Condensed', sans-serif; font-weight: 900; font-size: 28px; letter-spacing: 0.04em; margin-bottom: 6px; }
-  .panel-desc { font-size: 13px; color: var(--muted2); margin-bottom: 28px; }
-
-  .setting-group { margin-bottom: 28px; }
-  .setting-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted2); margin-bottom: 8px; }
-  .setting-input { width: 100%; background: var(--surface); border: 1px solid var(--border-bright); color: var(--text); padding: 10px 14px; border-radius: 4px; font-family: 'Barlow', sans-serif; font-size: 13px; outline: none; transition: border-color 0.15s; max-width: 500px; }
-  .setting-input:focus { border-color: #444; }
-  textarea.setting-input { resize: vertical; min-height: 90px; }
-  .setting-hint { font-size: 11px; color: var(--muted); margin-top: 5px; }
-  .save-btn { padding: 10px 24px; background: var(--accent); color: #000; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; border: none; border-radius: 4px; cursor: pointer; transition: opacity 0.15s; }
-  .save-btn:hover { opacity: 0.85; }
-
-  .models-grid { display: flex; flex-direction: column; gap: 10px; max-width: 680px; }
-  .model-card { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 14px 16px; display: flex; align-items: center; gap: 14px; transition: border-color 0.15s; }
-  .model-card:hover { border-color: var(--border-bright); }
-  .model-card.active-model { border-color: #ffffff44; }
-  .model-info { flex: 1; }
-  .model-card-name { font-weight: 700; font-size: 14px; }
-  .model-card-desc { font-size: 12px; color: var(--muted2); margin-top: 2px; }
-  .model-card-size { font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 3px; }
-  .model-actions { display: flex; gap: 8px; flex-shrink: 0; }
-  .btn-use { padding: 6px 14px; background: var(--accent); color: #000; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; border: none; border-radius: 3px; cursor: pointer; white-space: nowrap; }
-  .btn-use.active { background: #333; color: var(--muted2); cursor: default; }
-  .btn-pull { padding: 6px 14px; background: transparent; color: var(--muted2); font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; border: 1px solid var(--border-bright); border-radius: 3px; cursor: pointer; white-space: nowrap; }
-  .btn-pull:hover { border-color: #555; color: var(--text); }
-  .btn-delete { padding: 6px 10px; background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 3px; cursor: pointer; font-size: 12px; }
-  .btn-delete:hover { border-color: var(--red); color: var(--red); }
-  .pull-progress { margin-top: 8px; }
-  .progress-bar { height: 2px; background: var(--border); border-radius: 1px; overflow: hidden; }
-  .progress-fill { height: 100%; background: var(--accent); transition: width 0.3s; width: 0%; }
-  .progress-text { font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 4px; }
-  .installed-badge { display: inline-block; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--green); border: 1px solid var(--green); padding: 1px 6px; border-radius: 2px; margin-left: 8px; vertical-align: middle; }
-
-  #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(60px); background: #1a1a1a; border: 1px solid var(--border-bright); color: var(--text); padding: 10px 20px; border-radius: 4px; font-size: 13px; transition: transform 0.25s; z-index: 999; white-space: nowrap; }
-  #toast.show { transform: translateX(-50%) translateY(0); }
-
-  #model-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 100; align-items: center; justify-content: center; }
-  #model-modal.open { display: flex; }
-  .modal-box { background: var(--surface); border: 1px solid var(--border-bright); border-radius: 6px; width: 540px; max-width: 95vw; max-height: 80vh; display: flex; flex-direction: column; overflow: hidden; }
-  .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
-  .modal-title { font-family: 'Barlow Condensed', sans-serif; font-weight: 900; font-size: 18px; letter-spacing: 0.06em; }
-  .modal-close { background: none; border: none; color: var(--muted2); font-size: 20px; cursor: pointer; }
-  .modal-body { overflow-y: auto; padding: 16px 24px; flex: 1; }
-  .modal-model-item { display: flex; align-items: center; padding: 10px 12px; border-radius: 4px; cursor: pointer; transition: background 0.12s; gap: 12px; }
-  .modal-model-item:hover { background: var(--accent-dim); }
-  .modal-model-check { width: 16px; height: 16px; border: 1px solid var(--border-bright); border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-  .modal-model-check.on { background: var(--accent); border-color: var(--accent); }
-  .modal-model-check.on::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #000; }
-  .modal-model-info { flex: 1; }
-  .modal-model-name { font-size: 13px; font-weight: 700; }
-  .modal-model-meta { font-size: 11px; color: var(--muted2); margin-top: 1px; }
+  /* SETTINGS */
+  .settings-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center;
+  }
+  .settings-overlay.open { display: flex; }
+  .settings-panel {
+    background: var(--bg2); border: 1px solid var(--border);
+    width: 480px; max-width: 90vw; padding: 32px;
+    display: flex; flex-direction: column; gap: 24px;
+  }
+  .settings-header { display: flex; justify-content: space-between; align-items: center; }
+  .settings-header h2 { font-size: 10px; font-weight: 500; letter-spacing: 0.3em; text-transform: uppercase; color: var(--dim); }
+  .close-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; line-height: 1; }
+  .close-btn:hover { color: var(--text); }
+  .setting-row { display: flex; flex-direction: column; gap: 8px; }
+  .setting-row label { font-size: 9px; font-weight: 500; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
+  .setting-row textarea {
+    width: 100%; min-height: 120px; background: var(--bg3);
+    border: 1px solid var(--border); color: var(--text);
+    font-family: 'Inter', sans-serif; font-size: 12px; padding: 12px; resize: vertical;
+    outline: none;
+  }
+  .setting-row input[type=range] { width: 100%; accent-color: var(--text); }
+  .setting-row input[type=text] {
+    width: 100%; background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text); font-family: 'Inter', sans-serif; font-size: 13px;
+    padding: 10px 12px; outline: none;
+  }
+  .settings-save {
+    background: var(--text); color: var(--bg); border: none;
+    font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 500;
+    letter-spacing: 0.2em; text-transform: uppercase; padding: 12px;
+    cursor: pointer; align-self: flex-start; min-width: 120px;
+  }
+  .settings-save:hover { opacity: 0.85; }
 </style>
 </head>
 <body>
-<div id="app">
-  <div id="sidebar">
-    <div class="sidebar-header">
-      <div class="logo">KYROX</div>
-      <div class="logo-sub">Your AI. Your Machine.</div>
+<div class="app">
+  <aside class="sidebar">
+    <div class="logo">KYROX<span>Your AI. Your Machine.</span></div>
+
+    <div class="sidebar-label">Model</div>
+    <div class="select-wrap">
+      <select id="modelSelect"></select>
     </div>
-    <div class="sidebar-section">
-      <div class="sidebar-label">Model</div>
-      <button class="model-btn" id="model-btn">
-        <span class="model-name" id="sidebar-model-name">Loading...</span>
-        <span class="chevron">▼</span>
-      </button>
-      <div class="status-row">
-        <div class="dot" id="status-dot"></div>
-        <div class="status-text" id="status-text">Checking Ollama...</div>
-      </div>
+
+    <div class="status-dot">
+      <div class="dot" id="statusDot"></div>
+      <span id="statusText">Checking...</span>
     </div>
-    <div class="sidebar-divider"></div>
-    <nav>
-      <div class="nav-item active" data-panel="chat" onclick="switchPanel('chat')"><span class="nav-icon">💬</span> Chat</div>
-      <div class="nav-item" data-panel="models" onclick="switchPanel('models')"><span class="nav-icon">🧠</span> Models</div>
-      <div class="nav-item" data-panel="settings" onclick="switchPanel('settings')"><span class="nav-icon">⚙️</span> Settings</div>
-    </nav>
+
+    <div class="sidebar-label history-label">Conversations</div>
+    <div class="history-list" id="historyList">
+      <div class="history-empty">No conversations yet.</div>
+    </div>
+
     <div class="sidebar-bottom">
-      <button class="new-chat-btn" onclick="newChat()">+ New Chat</button>
+      <button class="new-chat-btn" onclick="newChat()">New conversation</button>
+      <button class="btn-ghost" onclick="openSettings()">Settings</button>
     </div>
-  </div>
+  </aside>
 
-  <div id="main">
-    <div id="topbar">
-      <button id="toggle-sidebar" onclick="toggleSidebar()">☰</button>
-      <span class="topbar-title">KYROX AI</span>
-      <span class="topbar-model" id="topbar-model"></span>
+  <main class="main">
+    <div class="topbar">
+      <span class="topbar-title" id="topbarTitle">Kyrox AI</span>
+      <span class="topbar-model" id="topbarModel">—</span>
     </div>
-
-    <div id="panel-chat" class="panel active">
-      <div id="chat-area">
-        <div class="message-wrap">
-          <div id="empty-state">
-            <div class="empty-logo">KYROX</div>
-            <div class="empty-tagline">Your AI. Your Machine. Your Rules.</div>
-            <div class="suggestions">
-              <div class="suggestion" onclick="fillInput('Open Chrome on YouTube')">🌐 Open Chrome on YouTube</div>
-              <div class="suggestion" onclick="fillInput('Create a simple Snake game in Python')">🎮 Create a Snake game</div>
-              <div class="suggestion" onclick="fillInput('Take a screenshot')">📸 Take a screenshot</div>
-              <div class="suggestion" onclick="fillInput('Search Google for the latest AI news')">🔍 Search the web</div>
-              <div class="suggestion" onclick="fillInput('Volume up')">🔊 Volume up</div>
-              <div class="suggestion" onclick="fillInput('Create an HTML landing page for my portfolio')">💻 Create a webpage</div>
-            </div>
-          </div>
-          <div id="messages"></div>
-        </div>
-      </div>
-      <div id="input-area">
-        <div id="voice-indicator">
-          <div class="voice-waves"><span></span><span></span><span></span><span></span><span></span></div>
-          Listening... speak now
-        </div>
-        <div class="input-wrap">
-          <textarea id="msg-input" placeholder="Talk to Kyrox..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
-          <div class="input-btns">
-            <button id="mic-btn" onclick="toggleVoice()" title="Voice input">🎤</button>
-            <button id="send-btn" onclick="sendMessage()" title="Send">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="22" y1="2" x2="11" y2="13"></line>
-                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div class="input-meta">
-          <span class="input-hint">Enter to send · Shift+Enter for new line · 🎤 for voice</span>
-        </div>
-      </div>
+    <div class="hero" id="hero">
+      <div class="hero-eyebrow">Your AI. Your Machine. Your Rules.</div>
+      <div class="hero-headline">YOUR AI<br><em>runs here.</em><br>NOT THEIRS.</div>
     </div>
-
-    <div id="panel-models" class="panel">
-      <div class="panel-inner">
-        <div class="panel-title">MODELS</div>
-        <div class="panel-desc">Download and switch between local models.</div>
-        <div class="models-grid" id="models-grid"><div style="color:var(--muted);font-size:13px;">Loading...</div></div>
+    <div class="chat-wrap" id="chatWrap" style="display:none"></div>
+    <div class="input-area">
+      <div class="input-row">
+        <textarea id="userInput" rows="1" placeholder="Ask anything or give a command..." onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        <button class="send-btn" onclick="sendMessage()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
       </div>
+      <div class="input-hint"><span>↵ send</span><span>⇧↵ newline</span></div>
     </div>
-
-    <div id="panel-settings" class="panel">
-      <div class="panel-inner">
-        <div class="panel-title">SETTINGS</div>
-        <div class="panel-desc">Configure Kyrox.</div>
-        <div class="setting-group">
-          <div class="setting-label">System Prompt</div>
-          <textarea class="setting-input" id="s-system" rows="6"></textarea>
-          <div class="setting-hint">Kyrox's personality and capabilities.</div>
-        </div>
-        <div class="setting-group">
-          <div class="setting-label">Temperature <span id="s-temp-val" style="color:var(--muted2)">0.7</span></div>
-          <input type="range" class="setting-input" id="s-temperature" min="0" max="2" step="0.1" value="0.7" oninput="document.getElementById('s-temp-val').textContent=this.value" style="padding:4px 0;background:none;border:none;cursor:pointer;max-width:400px;">
-        </div>
-        <div class="setting-group">
-          <div class="setting-label">Ollama URL</div>
-          <input type="text" class="setting-input" id="s-ollama-url" value="http://localhost:11434"/>
-        </div>
-        <div class="setting-group">
-          <div class="setting-label">Server Port</div>
-          <input type="number" class="setting-input" id="s-port" value="80" style="max-width:150px;"/>
-          <div class="setting-hint">Requires restart.</div>
-        </div>
-        <button class="save-btn" onclick="saveSettings()">Save Settings</button>
-      </div>
-    </div>
-  </div>
+  </main>
 </div>
 
-<div id="model-modal">
-  <div class="modal-box">
-    <div class="modal-header">
-      <div class="modal-title">SELECT MODEL</div>
-      <button class="modal-close" onclick="closeModelModal()">✕</button>
+<div class="settings-overlay" id="settingsOverlay" onclick="closeSettingsOutside(event)">
+  <div class="settings-panel">
+    <div class="settings-header">
+      <h2>Settings</h2>
+      <button class="close-btn" onclick="closeSettings()">✕</button>
     </div>
-    <div class="modal-body" id="modal-body"></div>
+    <div class="setting-row">
+      <label>System Prompt</label>
+      <textarea id="settingPrompt"></textarea>
+    </div>
+    <div class="setting-row">
+      <label>Temperature — <span id="tempVal">0.7</span></label>
+      <input type="range" id="settingTemp" min="0" max="1" step="0.05" value="0.7" oninput="document.getElementById('tempVal').textContent=this.value">
+    </div>
+    <div class="setting-row">
+      <label>Ollama URL</label>
+      <input type="text" id="settingOllama">
+    </div>
+    <button class="settings-save" onclick="saveSettings()">Save</button>
   </div>
 </div>
-<div id="toast"></div>
 
 <script>
-let config = {};
+const BASE = '/kyrox/api';
 let messages = [];
-let isStreaming = false;
-let sidebarVisible = true;
-let recognition = null;
-let isListening = false;
-let pendingFolderCallback = null;
+let cfg = {};
+let currentConvId = null;
 
+// ── UTILS ──
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function fmtDate(ts) {
+  const d = new Date(ts);
+  const now = new Date();
+  const diff = now - d;
+  if (diff < 60000) return 'Just now';
+  if (diff < 3600000) return Math.floor(diff/60000) + 'm ago';
+  if (diff < 86400000) return Math.floor(diff/3600000) + 'h ago';
+  return d.toLocaleDateString('en', {month:'short', day:'numeric'});
+}
+function convTitle(msgs) {
+  const first = msgs.find(m => m.role === 'user');
+  if (!first) return 'New conversation';
+  return first.content.slice(0, 40) + (first.content.length > 40 ? '…' : '');
+}
+
+// ── INIT ──
 async function init() {
+  const res = await fetch(`${BASE}/config`);
+  cfg = await res.json();
+  populateModels(cfg);
+  checkStatus();
+  document.getElementById('settingPrompt').value = cfg.system_prompt || '';
+  document.getElementById('settingTemp').value = cfg.temperature || 0.7;
+  document.getElementById('tempVal').textContent = cfg.temperature || 0.7;
+  document.getElementById('settingOllama').value = cfg.ollama_url || 'http://localhost:11434';
+  await loadHistory();
+}
+
+// ── HISTORY ──
+async function loadHistory() {
   try {
-    const r = await fetch('/kyrox/api/config');
-    config = await r.json();
-    updateUI(); checkStatus(); populateSettings(); initVoice();
-  } catch(e) { showToast('Could not connect to Kyrox server'); }
+    const res = await fetch(`${BASE}/conversations`);
+    const data = await res.json();
+    renderHistory(data.conversations || []);
+  } catch { renderHistory([]); }
 }
 
-function updateUI() {
-  const name = getModelDisplayName(config.model);
-  document.getElementById('sidebar-model-name').textContent = name;
-  document.getElementById('topbar-model').textContent = config.model;
+function renderHistory(convos) {
+  const list = document.getElementById('historyList');
+  if (!convos.length) {
+    list.innerHTML = '<div class="history-empty">No conversations yet.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  // newest first
+  [...convos].sort((a,b) => b.updated_at - a.updated_at).forEach(c => {
+    const item = document.createElement('div');
+    item.className = 'history-item' + (c.id === currentConvId ? ' active' : '');
+    item.dataset.id = c.id;
+    item.innerHTML = `
+      <div class="history-item-title">${c.title}</div>
+      <div class="history-item-date">${fmtDate(c.updated_at)}</div>
+      <button class="history-delete" onclick="deleteConv(event,'${c.id}')">✕</button>
+    `;
+    item.addEventListener('click', () => loadConv(c.id));
+    list.appendChild(item);
+  });
 }
 
-function getModelDisplayName(id) {
-  const m = (config.available_models || []).find(x => x.id === id);
-  return m ? m.name : id;
+async function loadConv(id) {
+  try {
+    const res = await fetch(`${BASE}/conversations/${id}`);
+    const data = await res.json();
+    currentConvId = id;
+    messages = data.messages || [];
+    renderMessages(messages);
+    updateActiveHistory();
+    document.getElementById('topbarTitle').textContent = convTitle(messages);
+  } catch {}
+}
+
+function renderMessages(msgs) {
+  const wrap = document.getElementById('chatWrap');
+  wrap.innerHTML = '';
+  msgs.forEach(m => {
+    if (m.role === 'system') return;
+    const display = m.content
+      .replace(/ACTION:\{[^\n]+\}/g, '')
+      .replace(/NEED_FOLDER:.+/g, '')
+      .trim();
+    if (!display) return;
+    addMessageDOM(m.role, display);
+  });
+  showChat();
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function updateActiveHistory() {
+  document.querySelectorAll('.history-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.id === currentConvId);
+  });
+}
+
+async function saveConv() {
+  if (!messages.length) return;
+  const title = convTitle(messages);
+  try {
+    await fetch(`${BASE}/conversations`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ id: currentConvId, title, messages, updated_at: Date.now() })
+    });
+    await loadHistory();
+  } catch {}
+}
+
+async function deleteConv(e, id) {
+  e.stopPropagation();
+  try {
+    await fetch(`${BASE}/conversations/${id}`, { method: 'DELETE' });
+    if (currentConvId === id) newChat();
+    else await loadHistory();
+  } catch {}
+}
+
+// ── MODELS ──
+function populateModels(cfg) {
+  const sel = document.getElementById('modelSelect');
+  sel.innerHTML = '';
+  const installed = cfg.installed_models || [];
+  const available = cfg.available_models || [];
+  available.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    const isInstalled = installed.some(i => i === m.id || i.startsWith(m.id));
+    opt.textContent = m.name + (isInstalled ? '' : ' ↓');
+    if (cfg.model === m.id) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  installed.forEach(name => {
+    if (!available.find(m => m.id === name || name.startsWith(m.id))) {
+      const opt = document.createElement('option');
+      opt.value = name; opt.textContent = name;
+      if (cfg.model === name) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  });
+  sel.onchange = () => switchModel(sel.value);
+  document.getElementById('topbarModel').textContent = sel.options[sel.selectedIndex]?.text || '—';
+}
+
+async function switchModel(model) {
+  cfg.model = model;
+  document.getElementById('topbarModel').textContent = document.getElementById('modelSelect').options[document.getElementById('modelSelect').selectedIndex]?.text || model;
+  await fetch(`${BASE}/config`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({model}) });
 }
 
 async function checkStatus() {
-  const dot = document.getElementById('status-dot');
-  const txt = document.getElementById('status-text');
   try {
-    const r = await fetch('/kyrox/api/status');
-    const d = await r.json();
-    dot.className = d.ollama ? 'dot online' : 'dot offline';
-    txt.textContent = d.ollama ? 'Ollama running' : 'Ollama not found';
-  } catch { dot.className = 'dot offline'; txt.textContent = 'Server error'; }
-  setTimeout(checkStatus, 10000);
+    const res = await fetch(`${BASE}/status`);
+    const d = await res.json();
+    const dot = document.getElementById('statusDot');
+    const txt = document.getElementById('statusText');
+    if (d.ollama) { dot.className = 'dot online'; txt.textContent = 'Ollama running'; }
+    else { dot.className = 'dot'; txt.textContent = 'Ollama offline'; }
+  } catch {}
 }
 
-// ── VOICE ──────────────────────────────────────────────────────────────────
-function initVoice() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) { document.getElementById('mic-btn').style.opacity = '0.3'; return; }
-  recognition = new SR();
-  recognition.lang = 'en-US';
-  recognition.continuous = false;
-  recognition.interimResults = false;
-  recognition.onresult = (e) => {
-    const text = e.results[0][0].transcript;
-    document.getElementById('msg-input').value = text;
-    autoResize(document.getElementById('msg-input'));
-    stopListening();
-    setTimeout(() => sendMessage(), 300);
-  };
-  recognition.onerror = (e) => { stopListening(); if (e.error !== 'aborted') showToast('Voice error: ' + e.error); };
-  recognition.onend = () => stopListening();
+// ── UI ──
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
 }
-function toggleVoice() {
-  if (!recognition) { showToast('Use Chrome for voice support'); return; }
-  if (isListening) { recognition.abort(); stopListening(); } else startListening();
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 }
-function startListening() {
-  isListening = true; recognition.start();
-  document.getElementById('mic-btn').classList.add('listening');
-  document.getElementById('voice-indicator').classList.add('active');
+function showChat() {
+  document.getElementById('hero').style.display = 'none';
+  document.getElementById('chatWrap').style.display = 'flex';
 }
-function stopListening() {
-  isListening = false;
-  document.getElementById('mic-btn').classList.remove('listening');
-  document.getElementById('voice-indicator').classList.remove('active');
+function newChat() {
+  messages = [];
+  currentConvId = null;
+  document.getElementById('chatWrap').innerHTML = '';
+  document.getElementById('chatWrap').style.display = 'none';
+  document.getElementById('hero').style.display = '';
+  document.getElementById('userInput').value = '';
+  document.getElementById('userInput').style.height = 'auto';
+  document.getElementById('topbarTitle').textContent = 'Kyrox AI';
+  updateActiveHistory();
 }
 
-// ── NAV ────────────────────────────────────────────────────────────────────
-function switchPanel(name) {
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.getElementById('panel-' + name).classList.add('active');
-  document.querySelector(`[data-panel="${name}"]`).classList.add('active');
-  if (name === 'models') renderModels();
-}
-function toggleSidebar() { sidebarVisible = !sidebarVisible; document.getElementById('sidebar').classList.toggle('hidden', !sidebarVisible); }
-function newChat() { messages = []; document.getElementById('messages').innerHTML = ''; document.getElementById('empty-state').style.display = ''; switchPanel('chat'); }
-function fillInput(text) { const inp = document.getElementById('msg-input'); inp.value = text; inp.focus(); autoResize(inp); }
-function handleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }
-function autoResize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 180) + 'px'; }
-
-// ── FOLDER PICKER ──────────────────────────────────────────────────────────
-function showFolderPicker(reason, msgId) {
-  const wrap = document.getElementById('messages');
-  const card = document.createElement('div');
-  card.className = 'folder-card';
-  card.id = 'folder-card-' + msgId;
-  const defaultPath = 'C:\\Users\\' + (navigator.userAgent.includes('Win') ? '' : '') + 'Desktop\\kyrox-project';
-  card.innerHTML = `
-    <div class="folder-card-title">📁 Folder needed</div>
-    <div class="folder-card-reason">${escapeHtml(reason)}</div>
-    <div class="folder-card-input">
-      <input class="folder-path-input" id="folder-input-${msgId}" value="${defaultPath}" placeholder="C:\\path\\to\\folder" />
-      <button class="folder-confirm-btn" onclick="confirmFolder('${msgId}')">Confirm →</button>
-    </div>`;
-  wrap.appendChild(card);
-  scrollBottom();
-}
-
-function confirmFolder(msgId) {
-  const input = document.getElementById('folder-input-' + msgId);
-  const folderPath = input.value.trim();
-  if (!folderPath) return;
-
-  // Remove the card
-  const card = document.getElementById('folder-card-' + msgId);
-  if (card) card.remove();
-
-  // Send the folder path back to Kyrox as a user message
-  fillInput(`FOLDER_PATH:${folderPath}`);
-  sendMessage();
-}
-
-// ── CHAT ───────────────────────────────────────────────────────────────────
-async function sendMessage() {
-  if (isStreaming) return;
-  const inp = document.getElementById('msg-input');
-  const text = inp.value.trim();
-  if (!text) return;
-
-  inp.value = ''; inp.style.height = 'auto';
-  document.getElementById('empty-state').style.display = 'none';
-
-  // Show user message (hide FOLDER_PATH prefix)
-  const displayText = text.startsWith('FOLDER_PATH:') ? '📁 ' + text.replace('FOLDER_PATH:', '') : text;
-  messages.push({ role: 'user', content: text });
-  appendMessage('user', displayText);
-
-  const thinkId = 'think-' + Date.now();
-  appendThinking(thinkId);
-  isStreaming = true;
-  document.getElementById('send-btn').disabled = true;
-
-  let full = '';
-  const msgId = 'msg-' + Date.now();
-  let firstToken = true;
-
-  try {
-    const resp = await fetch('/kyrox/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, model: config.model, system_prompt: config.system_prompt, temperature: config.temperature })
+function addMessageDOM(role, content, actionBadges) {
+  showChat();
+  const wrap = document.getElementById('chatWrap');
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  const roleEl = document.createElement('div');
+  roleEl.className = 'msg-role';
+  roleEl.textContent = role === 'user' ? 'You' : 'Kyrox';
+  div.appendChild(roleEl);
+  if (actionBadges && actionBadges.length) {
+    actionBadges.forEach(a => {
+      const badge = document.createElement('div');
+      badge.className = 'action-badge';
+      badge.textContent = a;
+      div.appendChild(badge);
     });
+  }
+  const contentEl = document.createElement('div');
+  contentEl.className = 'msg-content';
+  contentEl.textContent = content;
+  div.appendChild(contentEl);
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+  return contentEl;
+}
 
-    const reader = resp.body.getReader();
+function addTyping() {
+  showChat();
+  const wrap = document.getElementById('chatWrap');
+  const div = document.createElement('div');
+  div.className = 'msg assistant'; div.id = 'typingMsg';
+  const roleEl = document.createElement('div');
+  roleEl.className = 'msg-role'; roleEl.textContent = 'Kyrox';
+  const typing = document.createElement('div');
+  typing.className = 'typing';
+  typing.innerHTML = '<span></span><span></span><span></span>';
+  div.appendChild(roleEl); div.appendChild(typing);
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+  return div;
+}
+
+function showFolderPrompt(reason, msgEl) {
+  const fp = document.createElement('div');
+  fp.className = 'folder-prompt';
+  fp.innerHTML = `<p>${reason}</p><div class="folder-input-row"><input type="text" id="folderPathInput" placeholder="C:\\Users\\you\\Desktop\\MyProject"/><button onclick="submitFolder()">Confirm</button></div>`;
+  msgEl.parentElement.appendChild(fp);
+  document.getElementById('chatWrap').scrollTop = document.getElementById('chatWrap').scrollHeight;
+}
+function submitFolder() {
+  const path = document.getElementById('folderPathInput').value.trim();
+  if (!path) return;
+  document.querySelector('.folder-prompt')?.remove();
+  sendMessage(`FOLDER_PATH:${path}`);
+}
+
+// ── SEND ──
+async function sendMessage(override) {
+  const input = document.getElementById('userInput');
+  const text = override || input.value.trim();
+  if (!text) return;
+  if (!override) { input.value = ''; input.style.height = 'auto'; }
+
+  if (!currentConvId) currentConvId = genId();
+
+  addMessageDOM('user', text);
+  messages.push({ role: 'user', content: text });
+
+  const typingEl = addTyping();
+  let fullText = '';
+  let contentEl = null;
+  let actionBadges = [];
+
+  try {
+    const res = await fetch(`${BASE}/chat`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ messages, model: cfg.model, system_prompt: cfg.system_prompt, temperature: cfg.temperature })
+    });
+    const reader = res.body.getReader();
     const decoder = new TextDecoder();
-    let buffer = '';
 
     while (true) {
-      const { value, done } = await reader.read();
+      const { done, value } = await reader.read();
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n'); buffer = lines.pop();
-
-      for (const line of lines) {
+      const chunk = decoder.decode(value);
+      for (const line of chunk.split('\n')) {
         if (!line.startsWith('data: ')) continue;
         try {
           const d = JSON.parse(line.slice(6));
-
-          // Folder needed
+          if (d.error) { typingEl.remove(); addMessageDOM('assistant', '✗ ' + d.error); return; }
           if (d.need_folder) {
-            if (firstToken) { removeElement(thinkId); appendMessageEl(msgId); firstToken = false; }
-            showFolderPicker(d.reason, msgId);
+            if (!contentEl) { typingEl.remove(); contentEl = addMessageDOM('assistant', ''); }
+            showFolderPrompt(d.reason, contentEl);
           }
-
-          // Action results
-          if (d.action_results) {
-            if (firstToken) { removeElement(thinkId); appendMessageEl(msgId); firstToken = false; }
-            d.action_results.forEach(ar => showActionBadge(msgId, ar.result, ar.action));
-          }
-
-          if (d.error) { showToast('Error: ' + d.error); break; }
-
+          if (d.action_results) actionBadges = d.action_results.map(r => r.result);
           if (d.token) {
-            if (firstToken) { removeElement(thinkId); appendMessageEl(msgId); firstToken = false; }
-            full += d.token;
-            // Strip ACTION/NEED_FOLDER lines from display
-            const clean = full
-              .replace(/ACTION:\{[^}]+\}\n?/g, '')
-              .replace(/NEED_FOLDER:[^\n]+\n?/g, '')
-              .trim();
-            updateMessageEl(msgId, clean);
+            fullText += d.token;
+            const display = fullText.replace(/ACTION:\{[^\n]+\}/g,'').replace(/NEED_FOLDER:.+/g,'').trim();
+            if (!contentEl) {
+              typingEl.remove();
+              contentEl = addMessageDOM('assistant', display, actionBadges);
+            } else {
+              contentEl.textContent = display;
+              if (actionBadges.length) {
+                contentEl.parentElement.querySelectorAll('.action-badge').forEach(e => e.remove());
+                actionBadges.forEach(a => {
+                  const badge = document.createElement('div');
+                  badge.className = 'action-badge'; badge.textContent = a;
+                  contentEl.parentElement.insertBefore(badge, contentEl);
+                });
+              }
+            }
+            document.getElementById('chatWrap').scrollTop = document.getElementById('chatWrap').scrollHeight;
+          }
+          if (d.done && fullText) {
+            messages.push({ role: 'assistant', content: fullText });
+            document.getElementById('topbarTitle').textContent = convTitle(messages);
+            await saveConv();
           }
         } catch {}
       }
     }
-  } catch(e) { removeElement(thinkId); showToast('Connection error'); }
-
-  const clean = full.replace(/ACTION:\{[^}]+\}\n?/g, '').replace(/NEED_FOLDER:[^\n]+\n?/g, '').trim();
-  messages.push({ role: 'assistant', content: clean });
-  isStreaming = false;
-  document.getElementById('send-btn').disabled = false;
-  scrollBottom();
-}
-
-const ACTION_ICONS = { open_app:'🚀', web_search:'🔍', open_url:'🌐', screenshot:'📸', volume:'🔊', media:'🎵', run_command:'💻', close_app:'❌', create_file:'📄', create_folder:'📁', read_file:'📖', list_folder:'📂' };
-
-function showActionBadge(msgId, result, action) {
-  const el = document.getElementById(msgId);
-  if (!el) return;
-  const badge = document.createElement('div');
-  badge.className = 'action-badge' + (result.startsWith('✗') ? ' error' : '');
-  badge.textContent = (ACTION_ICONS[action?.type] || '⚡') + ' ' + result;
-  const content = el.querySelector('.msg-content');
-  if (content) el.insertBefore(badge, content);
-}
-
-function appendMessage(role, content) {
-  const wrap = document.getElementById('messages');
-  const el = document.createElement('div');
-  el.className = `msg ${role}`;
-  const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  el.innerHTML = `<div class="msg-header"><span class="msg-role">${role === 'user' ? 'You' : 'Kyrox'}</span><span class="msg-time">${time}</span></div><div class="msg-content">${escapeHtml(content)}</div>`;
-  wrap.appendChild(el); scrollBottom();
-}
-function appendMessageEl(id) {
-  const wrap = document.getElementById('messages');
-  const el = document.createElement('div');
-  el.className = 'msg assistant'; el.id = id;
-  const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  el.innerHTML = `<div class="msg-header"><span class="msg-role">Kyrox</span><span class="msg-time">${time}</span></div><div class="msg-content" id="content-${id}"></div>`;
-  wrap.appendChild(el);
-}
-function updateMessageEl(id, text) {
-  const el = document.getElementById('content-' + id);
-  if (el) { el.innerHTML = formatContent(text); scrollBottom(); }
-}
-function appendThinking(id) {
-  const wrap = document.getElementById('messages');
-  const el = document.createElement('div');
-  el.className = 'msg assistant'; el.id = id;
-  el.innerHTML = `<div class="msg-header"><span class="msg-role">Kyrox</span></div><div class="thinking"><span></span><span></span><span></span></div>`;
-  wrap.appendChild(el); scrollBottom();
-}
-function removeElement(id) { const el = document.getElementById(id); if (el) el.remove(); }
-
-function formatContent(text) {
-  text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => `<pre><code>${escapeHtml(code.trim())}</code></pre>`);
-  text = text.replace(/`([^`]+)`/g, (_, c) => `<code>${escapeHtml(c)}</code>`);
-  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  return text;
-}
-function escapeHtml(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function scrollBottom() { const a = document.getElementById('chat-area'); a.scrollTop = a.scrollHeight; }
-
-// ── MODELS ─────────────────────────────────────────────────────────────────
-async function renderModels() {
-  const grid = document.getElementById('models-grid');
-  const r = await fetch('/kyrox/api/models');
-  const data = await r.json();
-  const installed = data.installed || [];
-  grid.innerHTML = data.available.map(m => {
-    const isInst = installed.some(i => i === m.id || i.startsWith(m.id.split(':')[0]));
-    const isCur = config.model === m.id;
-    return `<div class="model-card ${isCur?'active-model':''}">
-      <div class="model-info">
-        <div class="model-card-name">${m.name}${isInst?'<span class="installed-badge">Installed</span>':''}</div>
-        <div class="model-card-desc">${m.desc}</div>
-        <div class="model-card-size">${m.size}</div>
-        <div class="pull-progress" id="progress-${m.id.replace(/[:.]/g,'_')}" style="display:none">
-          <div class="progress-bar"><div class="progress-fill" id="fill-${m.id.replace(/[:.]/g,'_')}"></div></div>
-          <div class="progress-text" id="ptext-${m.id.replace(/[:.]/g,'_')}">Starting...</div>
-        </div>
-      </div>
-      <div class="model-actions">
-        ${isInst?`<button class="btn-use ${isCur?'active':''}" onclick="useModel('${m.id}')">${isCur?'Active':'Use'}</button>`:''}
-        ${!isInst?`<button class="btn-pull" id="pull-${m.id.replace(/[:.]/g,'_')}" onclick="pullModel('${m.id}')">Download</button>`:''}
-        ${isInst&&!isCur?`<button class="btn-delete" onclick="deleteModel('${m.id}')" title="Remove">✕</button>`:''}
-      </div>
-    </div>`;
-  }).join('');
-}
-
-async function pullModel(id) {
-  const safe = id.replace(/[:.]/g,'_');
-  const btn = document.getElementById('pull-'+safe);
-  const prog = document.getElementById('progress-'+safe);
-  const fill = document.getElementById('fill-'+safe);
-  const ptext = document.getElementById('ptext-'+safe);
-  if (btn) { btn.textContent='Downloading...'; btn.disabled=true; }
-  if (prog) prog.style.display='block';
-  const resp = await fetch('/kyrox/api/pull', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:id})});
-  const reader = resp.body.getReader(); const decoder = new TextDecoder(); let buffer='';
-  while (true) {
-    const {value,done} = await reader.read(); if (done) break;
-    buffer += decoder.decode(value,{stream:true});
-    const lines = buffer.split('\n'); buffer = lines.pop();
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      try {
-        const d = JSON.parse(line.slice(6));
-        if (d.total&&d.completed) { const p=Math.round((d.completed/d.total)*100); if(fill)fill.style.width=p+'%'; if(ptext)ptext.textContent=p+'% — '+(d.status||''); }
-        else if (d.status&&ptext) ptext.textContent=d.status;
-      } catch {}
-    }
+  } catch {
+    typingEl.remove();
+    addMessageDOM('assistant', '✗ Connection error. Is Ollama running?');
   }
-  showToast(id+' downloaded!'); renderModels();
+  if (!contentEl) typingEl.remove();
 }
 
-async function useModel(id) {
-  config.model=id;
-  await fetch('/kyrox/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:id})});
-  updateUI(); renderModels(); showToast('Switched to '+id);
-}
-async function deleteModel(id) {
-  if (!confirm('Remove '+id+'?')) return;
-  await fetch('/kyrox/api/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:id})});
-  showToast(id+' removed'); renderModels();
-}
-
-document.getElementById('model-btn').onclick = openModelModal;
-function openModelModal() {
-  const body = document.getElementById('modal-body');
-  const installed = config.installed_models||[];
-  const available = config.available_models||[];
-  const list = available.filter(m=>installed.some(i=>i===m.id||i.startsWith(m.id)));
-  const display = list.length ? list : available;
-  body.innerHTML = display.map(m=>`
-    <div class="modal-model-item ${config.model===m.id?'selected':''}" onclick="selectModel('${m.id}')">
-      <div class="modal-model-check ${config.model===m.id?'on':''}"></div>
-      <div class="modal-model-info">
-        <div class="modal-model-name">${m.name}</div>
-        <div class="modal-model-meta">${m.size} · ${m.desc}</div>
-      </div>
-    </div>`).join('');
-  document.getElementById('model-modal').classList.add('open');
-}
-function closeModelModal() { document.getElementById('model-modal').classList.remove('open'); }
-async function selectModel(id) { await useModel(id); closeModelModal(); }
-document.getElementById('model-modal').addEventListener('click',function(e){if(e.target===this)closeModelModal();});
-
-// ── SETTINGS ───────────────────────────────────────────────────────────────
-function populateSettings() {
-  document.getElementById('s-system').value = config.system_prompt||'';
-  document.getElementById('s-temperature').value = config.temperature||0.7;
-  document.getElementById('s-temp-val').textContent = config.temperature||0.7;
-  document.getElementById('s-ollama-url').value = config.ollama_url||'http://localhost:11434';
-  document.getElementById('s-port').value = config.port||80;
-}
+// ── SETTINGS ──
+function openSettings() { document.getElementById('settingsOverlay').classList.add('open'); }
+function closeSettings() { document.getElementById('settingsOverlay').classList.remove('open'); }
+function closeSettingsOutside(e) { if (e.target === document.getElementById('settingsOverlay')) closeSettings(); }
 async function saveSettings() {
-  const update = { system_prompt:document.getElementById('s-system').value, temperature:parseFloat(document.getElementById('s-temperature').value), ollama_url:document.getElementById('s-ollama-url').value, port:parseInt(document.getElementById('s-port').value) };
-  await fetch('/kyrox/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(update)});
-  Object.assign(config,update); showToast('Settings saved');
-}
-
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent=msg; t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'),2500);
+  cfg.system_prompt = document.getElementById('settingPrompt').value;
+  cfg.temperature = parseFloat(document.getElementById('settingTemp').value);
+  cfg.ollama_url = document.getElementById('settingOllama').value;
+  await fetch(`${BASE}/config`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cfg) });
+  closeSettings();
 }
 
 init();
