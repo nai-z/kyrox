@@ -1109,6 +1109,15 @@ function finalizeDone(clean) {
   scrollBottom();
   // Update voice view
   document.getElementById('voice-last').innerHTML = `<em>${esc(clean.slice(0,180))}${clean.length>180?'…':''}</em>`;
+  // Update overlay response if pending
+  if (window._overlayPending) {
+    const respEl = document.getElementById('overlay-response');
+    if (respEl) {
+      respEl.style.display = 'block';
+      respEl.textContent = clean.slice(0, 600) + (clean.length > 600 ? '...' : '');
+    }
+    window._overlayPending = false;
+  }
 }
 
 function showError(msg) {
@@ -1203,6 +1212,11 @@ function activateTab(name) {
     const on = c.id === 'tab-'+name;
     c.classList.toggle('active', on);
   });
+  // Auto-load news when tab is activated
+  if (name === 'news') {
+    const list = document.getElementById('news-list');
+    if (list && list.children.length <= 1) loadNews();
+  }
 }
 document.querySelectorAll('.tab').forEach(t => {
   t.addEventListener('click', () => activateTab(t.dataset.tab));
@@ -1348,35 +1362,7 @@ function wakewordListen() {
   try{rec.start();wakeRec=rec;}catch(e){setTimeout(()=>wakewordListen(),1200);}
 }
 
-// TTS
-function speakText(text) {
-  if (!window.speechSynthesis||settings.tts===false) return;
-  window.speechSynthesis.cancel();
-  let clean = text
-    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu,'')
-    .replace(/```[\s\S]*?```/g,'code block')
-    .replace(/`[^`]+`/g,'')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g,'$1')
-    .replace(/[*_~>#]/g,'')
-    .replace(/\s+/g,' ').trim();
-  if (!clean) return;
-  setSpeakState(true);
-  const chunks = clean.match(/.{1,250}(?:[.!?,\n]|$)/g)||[clean];
-  const speak = i => {
-    if(i>=chunks.length){setSpeakState(false);return;}
-    const c=chunks[i].trim(); if(!c){speak(i+1);return;}
-    const utt=new SpeechSynthesisUtterance(c);
-    utt.rate=1.05; utt.pitch=1.0;
-    const voices=window.speechSynthesis.getVoices();
-    const voice=voices.find(v=>v.name.includes('Daniel')||v.name.includes('Guy')||v.name.includes('Alex'))
-               ||voices.find(v=>v.lang.startsWith('en')&&!v.name.toLowerCase().includes('female'))
-               ||voices[0];
-    if(voice) utt.voice=voice;
-    utt.onend=()=>speak(i+1); utt.onerror=()=>speak(i+1);
-    window.speechSynthesis.speak(utt);
-  };
-  speak(0);
-}
+// TTS — defined once below (see "Override speakText" section)
 
 // ── Settings panel ─────────────────────────────────────────────────────────
 let curBackend = 'openrouter';
@@ -1407,6 +1393,14 @@ function loadSettingsIntoPanel(s) {
   contextFiles = [...(s.context_files||[])];
   renderContextFiles();
   renderSettingsMemory();
+  // Voice settings
+  const voiceSel = document.getElementById('s-voice-name');
+  const rateEl   = document.getElementById('s-voice-rate');
+  if (voiceSel && s.tts_voice) voiceSel.value = s.tts_voice;
+  if (rateEl && s.tts_rate) {
+    rateEl.value = s.tts_rate;
+    document.getElementById('voice-rate-label').textContent = 'Rate: ' + parseFloat(s.tts_rate).toFixed(2) + 'x';
+  }
 }
 
 function renderContextFiles() {
@@ -1439,6 +1433,8 @@ async function scanContextNow() {
 }
 
 async function saveSettings() {
+  const voiceSel = document.getElementById('s-voice-name');
+  const rateEl   = document.getElementById('s-voice-rate');
   const body = {
     backend: curBackend,
     openrouter_key: document.getElementById('s-or-key').value.trim(),
@@ -1447,6 +1443,8 @@ async function saveSettings() {
     system_prompt: document.getElementById('s-prompt').value,
     wakeword: document.getElementById('s-wakeword').value,
     tts: document.getElementById('s-tts').checked,
+    tts_voice: voiceSel ? voiceSel.value : '',
+    tts_rate:  rateEl   ? parseFloat(rateEl.value) : 1.05,
     context_files: contextFiles,
     socials: {
       twitch: document.getElementById('s-twitch').value.trim(),
@@ -1543,7 +1541,7 @@ document.getElementById('s-voice-rate').addEventListener('input', function() {
   document.getElementById('voice-rate-label').textContent = 'Rate: ' + parseFloat(this.value).toFixed(2) + 'x';
 });
 
-// Override speakText to use selected voice + rate
+// TTS — single definition using saved voice + rate settings
 function speakText(text) {
   if (!window.speechSynthesis || settings.tts === false) return;
   window.speechSynthesis.cancel();
@@ -1615,15 +1613,7 @@ async function loadNews() {
   }
 }
 
-// Auto-load news when tab is activated
-const _origActivateTab = activateTab;
-function activateTab(name) {
-  _origActivateTab(name);
-  if (name === 'news') {
-    const list = document.getElementById('news-list');
-    if (list && list.children.length <= 1) loadNews();
-  }
-}
+// (auto-load news is already handled inside activateTab above)
 
 // ── Overlay Widget ────────────────────────────────────────────────────────
 let overlayDragging = false, overlayOffX = 0, overlayOffY = 0;
@@ -1640,19 +1630,34 @@ function closeOverlay() {
 const dragHandle = document.getElementById('overlay-drag');
 dragHandle.addEventListener('mousedown', e => {
   overlayDragging = true;
-  const rect = document.getElementById('overlay-widget').getBoundingClientRect();
+  const w = document.getElementById('overlay-widget');
+  const rect = w.getBoundingClientRect();
   overlayOffX = e.clientX - rect.left;
   overlayOffY = e.clientY - rect.top;
+  w.style.left  = rect.left + 'px';
+  w.style.top   = rect.top  + 'px';
+  w.style.right = 'auto';
+  // Bloquer tous les events sur la page pendant le drag
+  document.getElementById('app').style.pointerEvents = 'none';
+  w.style.userSelect = 'none';
   e.preventDefault();
 });
 document.addEventListener('mousemove', e => {
   if (!overlayDragging) return;
   const w = document.getElementById('overlay-widget');
-  w.style.left = (e.clientX - overlayOffX) + 'px';
-  w.style.top  = (e.clientY - overlayOffY) + 'px';
-  w.style.right = 'auto';
+  let newLeft = e.clientX - overlayOffX;
+  let newTop  = e.clientY - overlayOffY;
+  newLeft = Math.max(0, Math.min(newLeft, window.innerWidth  - w.offsetWidth));
+  newTop  = Math.max(0, Math.min(newTop,  window.innerHeight - w.offsetHeight));
+  w.style.left = newLeft + 'px';
+  w.style.top  = newTop  + 'px';
 });
-document.addEventListener('mouseup', () => { overlayDragging = false; });
+document.addEventListener('mouseup', () => {
+  if (!overlayDragging) return;
+  overlayDragging = false;
+  document.getElementById('app').style.pointerEvents = '';
+  document.getElementById('overlay-widget').style.userSelect = '';
+});
 
 function overlayAsk() {
   const input = document.getElementById('overlay-input');
@@ -1679,41 +1684,11 @@ function captureAndAsk() {
   activateTab('chat');
 }
 
-// Patch finalizeDone to update overlay response
-const _origFinalize = finalizeDone;
-function finalizeDone(clean) {
-  _origFinalize(clean);
-  if (window._overlayPending) {
-    const respEl = document.getElementById('overlay-response');
-    if (respEl) {
-      respEl.style.display = 'block';
-      respEl.textContent = clean.slice(0, 600) + (clean.length > 600 ? '...' : '');
-    }
-    window._overlayPending = false;
-  }
-}
+// (overlay response update is already handled inside finalizeDone above)
 
-// ── Voice settings persistence ──────────────────────────────────────────
-const _origLoadSettingsPanel = loadSettingsIntoPanel;
-function loadSettingsIntoPanel(s) {
-  _origLoadSettingsPanel(s);
-  const voiceSel = document.getElementById('s-voice-name');
-  const rateEl   = document.getElementById('s-voice-rate');
-  if (voiceSel && s.tts_voice) voiceSel.value = s.tts_voice;
-  if (rateEl && s.tts_rate) {
-    rateEl.value = s.tts_rate;
-    document.getElementById('voice-rate-label').textContent = 'Rate: ' + parseFloat(s.tts_rate).toFixed(2) + 'x';
-  }
-}
+// (voice settings are already handled inside loadSettingsIntoPanel above)
 
-const _origSaveSettings = saveSettings;
-async function saveSettings() {
-  const voiceSel = document.getElementById('s-voice-name');
-  const rateEl   = document.getElementById('s-voice-rate');
-  if (voiceSel) settings.tts_voice = voiceSel.value;
-  if (rateEl)   settings.tts_rate  = parseFloat(rateEl.value);
-  await _origSaveSettings();
-}
+// (tts_voice and tts_rate are already saved inside saveSettings above)
 
 setTimeout(populateVoiceSelect, 800);
 
