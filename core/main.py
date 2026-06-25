@@ -109,6 +109,7 @@ DEFAULT_SYSTEM_PROMPT = (
     "```action\n{\"type\":\"read_file\",\"path\":\"...\"}\n```\n"
     "When asked to create/write/save a file:\n"
     "```action\n{\"type\":\"write_file\",\"path\":\"path/to/file.ext\",\"content\":\"file content here\"}\n```\n"
+    "IMPORTANT: To create or save a file, ALWAYS use write_file action — never use run_script for file creation.\n"
     "When asked to share socials / send links:\n"
     "```action\n{\"type\":\"send_socials\"}\n```\n"
     "Never explain action blocks to the user. Never say emoji names. "
@@ -489,8 +490,14 @@ def take_screenshot() -> Optional[str]:
         return None
 
 async def is_screen_request(text: str) -> bool:
-    kw = ("screen", "écran", "mon écran", "regarde", "capture", "screenshot", "display", "bureau", "fenêtre")
-    return any(k in text.lower() for k in kw)
+    # Only trigger on explicit screen/vision requests — avoid false positives
+    kw = ("screenshot", "screen capture", "capture d'écran",
+          "regarde mon écran", "regarde l'écran", "look at my screen",
+          "what's on my screen", "what is on my screen",
+          "scan my screen", "analyze my screen", "analyse mon écran",
+          "montre moi mon écran", "capture my screen")
+    tl = text.lower()
+    return any(k in tl for k in kw)
 
 async def call_vision(api_key: str, img_b64: str, msg: str, sys_prompt: str) -> str:
     last_err = "No vision model available"
