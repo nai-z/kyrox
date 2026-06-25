@@ -38,14 +38,64 @@ FREE_MODELS = [
     "nvidia/llama-3.1-nemotron-ultra-253b-v1:free",
     "openrouter/auto",
 ]
+
+VISION_MODELS = [
+    "google/gemini-flash-1.5",
+    "google/gemini-2.0-flash-001",
+    "openai/gpt-4o-mini",
+    "anthropic/claude-3-haiku",
+    "meta-llama/llama-3.2-11b-vision-instruct:free",
+]
+
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-VISION_MODEL   = "google/gemini-flash-1.5"
+
+# ── Coding / creation skills injected dynamically ─────────────────────────
+SKILL_FRONTEND = """
+[SKILL: Frontend / HTML creation]
+When creating HTML pages, ALWAYS produce a complete, visually stunning result:
+- Use modern CSS: gradients, glassmorphism, animations, hover effects, box-shadows
+- Google Fonts (import from fonts.googleapis.com)
+- Responsive layout with flexbox or grid
+- Dark or light theme with cohesive color palette
+- Smooth transitions on all interactive elements
+- Never output a blank white page with plain text
+- For games: use canvas or CSS animations, add score, levels, sound effects via Web Audio API
+- For landing pages: hero section, cards, CTA buttons, footer
+- For dashboards: sidebar nav, stat cards, charts (use Chart.js from cdnjs)
+- ALWAYS include meta viewport tag and charset
+- Inline all CSS and JS in a single .html file unless told otherwise
+Example quality bar: the output should look like a professional designer made it.
+"""
+
+SKILL_PYTHON = """
+[SKILL: Python scripting]
+When writing Python scripts:
+- Add proper error handling (try/except) and meaningful error messages
+- Use f-strings, type hints where helpful
+- Add a if __name__ == '__main__' guard
+- For CLI tools: use argparse or sys.argv
+- For file operations: always use pathlib.Path
+- Add brief docstrings for functions
+- Print clear status messages so the user knows what's happening
+- Never write bare scripts with no output — always confirm success/failure
+"""
+
+SKILL_FILE_OPS = """
+[SKILL: File system operations]
+When creating or writing files:
+- Always confirm the full path you're writing to
+- Use the write_file action with absolute or ~/relative paths
+- After writing, mention what was created and where
+- For projects (multiple files): create them one by one, announce each
+- If creating a folder structure: explain it clearly
+"""
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are Kyrox, an elite AI companion inspired by JARVIS from Iron Man. "
     "You are sharp, confident, slightly witty, and deeply helpful. "
     "You remember everything about your user and use it naturally in conversation. "
     "Speak in short, punchy sentences unless a detailed answer is needed. "
+    "Match the user's language — if they write in French, respond in French. "
     "When asked to open an app or website, emit an action block:\n"
     "```action\n{\"type\":\"open\",\"target\":\"app_or_url\",\"label\":\"name\"}\n```\n"
     "When asked to search the web:\n"
@@ -54,6 +104,8 @@ DEFAULT_SYSTEM_PROMPT = (
     "```action\n{\"type\":\"run_script\",\"lang\":\"python\",\"code\":\"...\"}\n```\n"
     "When asked to read a file:\n"
     "```action\n{\"type\":\"read_file\",\"path\":\"...\"}\n```\n"
+    "When asked to create/write/save a file:\n"
+    "```action\n{\"type\":\"write_file\",\"path\":\"path/to/file.ext\",\"content\":\"file content here\"}\n```\n"
     "When asked to share socials / send links:\n"
     "```action\n{\"type\":\"send_socials\"}\n```\n"
     "Never explain action blocks to the user. Never say emoji names. "
@@ -69,14 +121,22 @@ DEFAULT_SETTINGS = {
     "system_prompt": DEFAULT_SYSTEM_PROMPT,
     "wakeword": "hey kyrox",
     "tts": True,
+    "tts_voice": "",
     "socials": {"twitch":"","twitter":"","instagram":"","youtube":"","discord":"","github":""},
     "apps": {
-        "steam":"steam://open/main","spotify":"spotify:","discord":"discord:",
-        "chrome":"chrome","firefox":"firefox","vscode":"code",
-        "notepad":"notepad","calculator":"calc","explorer":"explorer",
+        "steam": "steam://open/main",
+        "spotify": "spotify:",
+        "discord": "discord:",
+        "chrome": "chrome",
+        "firefox": "firefox",
+        "vscode": "code",
+        "notepad": "notepad",
+        "calculator": "calc",
+        "explorer": "explorer",
     },
-    "context_files": [],   # list of paths scanned at startup
-    "context_text": "",    # aggregated content from .md/.txt files
+    "context_files": [],
+    "context_text": "",
+    "auto_scan_home": True,
 }
 
 # ── Settings ───────────────────────────────────────────────────────────────
@@ -85,16 +145,16 @@ def load_settings() -> dict:
         with open(SETTINGS_FILE) as f:
             data = json.load(f)
         merged = {**DEFAULT_SETTINGS, **data}
-        for key in ("socials","apps"):
+        for key in ("socials", "apps"):
             merged[key] = {**DEFAULT_SETTINGS[key], **data.get(key, {})}
         return merged
     return DEFAULT_SETTINGS.copy()
 
 def save_settings(data: dict):
-    with open(SETTINGS_FILE,"w") as f:
+    with open(SETTINGS_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-# ── Per-user data (history + memory) ──────────────────────────────────────
+# ── Per-user data ──────────────────────────────────────────────────────────
 def user_dir(uid: str) -> Path:
     p = DATA_DIR / "users" / uid
     p.mkdir(parents=True, exist_ok=True)
@@ -110,7 +170,7 @@ def save_history(uid: str, history: list):
 
 def load_memory(uid: str) -> dict:
     p = user_dir(uid) / "memory.json"
-    return json.loads(p.read_text()) if p.exists() else {"facts":[],"preferences":{}}
+    return json.loads(p.read_text()) if p.exists() else {"facts": [], "preferences": {}}
 
 def save_memory(uid: str, memory: dict):
     memory["last_updated"] = datetime.now().isoformat()
@@ -125,7 +185,7 @@ def list_users() -> list[dict]:
     for d in base.iterdir():
         if d.is_dir():
             mem = load_memory(d.name)
-            name = next((f.split("name is ")[-1] for f in mem.get("facts",[]) if "name is" in f.lower()), d.name[:8])
+            name = next((f.split("name is ")[-1] for f in mem.get("facts", []) if "name is" in f.lower()), d.name[:8])
             result.append({"id": d.name, "name": name})
     return result
 
@@ -134,119 +194,264 @@ def memory_summary(memory: dict) -> str:
     prefs = memory.get("preferences", {})
     if not facts and not prefs:
         return ""
-    lines = ["[KYROX MEMORY — what you know about this user:]"]
+    lines = ["[KYROX MEMORY — ce que tu sais sur cet utilisateur:]"]
     for f in facts[-40:]:
         lines.append(f"  • {f}")
     for k, v in prefs.items():
         lines.append(f"  • {k}: {v}")
     return "\n".join(lines)
 
-# ── Context file reader (.md / .txt) ──────────────────────────────────────
+# ── Auto-scan home directory for user profile files ───────────────────────
+def auto_scan_user_profile() -> str:
+    """Scan common user profile files to auto-learn about the user."""
+    home = Path.home()
+    chunks = []
+
+    # Common profile/about files to check
+    profile_candidates = [
+        home / "about.md", home / "about.txt",
+        home / "README.md", home / "profile.md",
+        home / "me.md", home / "me.txt",
+        home / "Documents" / "about.md",
+        home / "Documents" / "profile.md",
+    ]
+    for p in profile_candidates:
+        if p.exists():
+            try:
+                chunks.append(f"[Profile file: {p.name}]\n{p.read_text(errors='replace')[:3000]}")
+            except Exception:
+                pass
+
+    # Scan Desktop for .md/.txt files (project notes, etc.)
+    desktop = home / "Desktop"
+    if desktop.exists():
+        for f in list(desktop.glob("*.md"))[:5] + list(desktop.glob("*.txt"))[:5]:
+            try:
+                chunks.append(f"[Desktop/{f.name}]\n{f.read_text(errors='replace')[:1500]}")
+            except Exception:
+                pass
+
+    return "\n\n---\n\n".join(chunks)[:8000]
+
+# ── Context file reader ────────────────────────────────────────────────────
 def scan_context_files(paths: list[str]) -> str:
-    """Read .md and .txt files from given paths, return combined text (truncated)."""
     chunks = []
     for raw in paths:
         p = Path(raw).expanduser()
-        if p.is_file() and p.suffix.lower() in (".md",".txt"):
+        if p.is_file() and p.suffix.lower() in (".md", ".txt"):
             try:
                 chunks.append(f"[File: {p.name}]\n{p.read_text(errors='replace')[:4000]}")
             except Exception:
                 pass
         elif p.is_dir():
             for f in sorted(p.rglob("*"))[:20]:
-                if f.is_file() and f.suffix.lower() in (".md",".txt"):
+                if f.is_file() and f.suffix.lower() in (".md", ".txt"):
                     try:
                         chunks.append(f"[File: {f.name}]\n{f.read_text(errors='replace')[:2000]}")
                     except Exception:
                         pass
     combined = "\n\n---\n\n".join(chunks)
-    return combined[:12000]   # hard cap
+    return combined[:12000]
+
+# ── Skill injection based on message content ──────────────────────────────
+def get_relevant_skills(message: str) -> str:
+    msg_lower = message.lower()
+    skills = []
+
+    # Frontend / HTML
+    html_keywords = ["html", "page", "site", "website", "web", "css", "interface", "landing",
+                     "design", "jeu", "game", "dashboard", "card", "portfolio", "blog",
+                     "formulaire", "form", "animation", "bouton", "button"]
+    if any(k in msg_lower for k in html_keywords):
+        skills.append(SKILL_FRONTEND)
+
+    # Python
+    python_keywords = ["python", "script", "code", ".py", "automatise", "automate",
+                       "fichier", "file", "liste", "list", "calcul", "calculate"]
+    if any(k in msg_lower for k in python_keywords):
+        skills.append(SKILL_PYTHON)
+
+    # File operations
+    file_keywords = ["crée", "créer", "create", "écris", "write", "sauvegarde", "save",
+                     "fichier", "file", "dossier", "folder", "génère", "generate"]
+    if any(k in msg_lower for k in file_keywords):
+        skills.append(SKILL_FILE_OPS)
+
+    return "\n".join(skills)
 
 # ── PC Actions ────────────────────────────────────────────────────────────
 def execute_pc_action(action: dict, settings: dict) -> dict:
-    atype  = action.get("type","")
-    target = action.get("target","")
+    atype  = action.get("type", "")
+    target = action.get("target", "").strip()
     os_name = platform.system()
 
     if atype == "open":
         try:
-            if target.startswith(("http://","https://")):
+            # 1. Direct URL → open in browser
+            if target.startswith(("http://", "https://")):
                 webbrowser.open(target)
-                return {"ok":True,"message":f"Opened {target}"}
-            if "://" in target or target.endswith(":"):
-                if os_name == "Windows": os.startfile(target)
-                else: subprocess.Popen(["xdg-open",target])
-                return {"ok":True,"message":f"Launched {target}"}
-            reg = settings.get("apps",{})
+                return {"ok": True, "message": f"Opened {target}"}
+
+            # 2. Protocol URI (steam://, spotify:, discord:, etc.)
+            if "://" in target or (target.endswith(":") and len(target) > 2):
+                if os_name == "Windows":
+                    os.startfile(target)
+                elif os_name == "Darwin":
+                    subprocess.Popen(["open", target])
+                else:
+                    subprocess.Popen(["xdg-open", target])
+                return {"ok": True, "message": f"Launched {target}"}
+
+            # 3. Check registered apps dict (fuzzy match)
+            reg = settings.get("apps", {})
             tl = target.lower()
             for name, cmd in reg.items():
                 if name in tl or tl in name:
-                    if cmd.startswith("http") or "://" in cmd:
-                        webbrowser.open(cmd)
+                    # cmd could be URL, protocol URI, or executable name
+                    if cmd.startswith("http") or "://" in cmd or cmd.endswith(":"):
+                        if os_name == "Windows":
+                            os.startfile(cmd)
+                        elif os_name == "Darwin":
+                            subprocess.Popen(["open", cmd])
+                        else:
+                            subprocess.Popen(["xdg-open", cmd])
                     elif os_name == "Windows":
-                        os.startfile(cmd) if os.path.exists(cmd) else subprocess.Popen(cmd,shell=True)
+                        if os.path.exists(cmd):
+                            os.startfile(cmd)
+                        else:
+                            subprocess.Popen(cmd, shell=True)
+                    elif os_name == "Darwin":
+                        subprocess.Popen(["open", "-a", cmd])
                     else:
-                        subprocess.Popen([cmd],shell=True)
-                    return {"ok":True,"message":f"Launched {name}"}
-            if os_name == "Windows":   subprocess.Popen(target,shell=True)
-            elif os_name == "Darwin":  subprocess.Popen(["open","-a",target])
-            else:                       subprocess.Popen([target])
-            return {"ok":True,"message":f"Launched {target}"}
+                        subprocess.Popen([cmd], shell=True)
+                    return {"ok": True, "message": f"Launched {name}"}
+
+            # 4. Looks like a website name (e.g. "youtube", "github.com", "netflix")
+            # Add https:// if it looks like a domain
+            domain_like = (
+                "." in target
+                or target.lower() in [
+                    "youtube", "google", "facebook", "twitter", "instagram",
+                    "github", "netflix", "twitch", "reddit", "discord",
+                    "spotify", "amazon", "wikipedia", "stackoverflow",
+                ]
+            )
+            if domain_like:
+                url = target if target.startswith("http") else f"https://{target.rstrip('/')}.com" if "." not in target else f"https://{target}"
+                webbrowser.open(url)
+                return {"ok": True, "message": f"Opened {url} in browser"}
+
+            # 5. Try as executable / app name
+            if os_name == "Windows":
+                subprocess.Popen(target, shell=True)
+            elif os_name == "Darwin":
+                subprocess.Popen(["open", "-a", target])
+            else:
+                subprocess.Popen([target], shell=True)
+            return {"ok": True, "message": f"Launched {target}"}
+
         except Exception as e:
-            return {"ok":False,"message":str(e)}
+            # Last resort: try webbrowser
+            try:
+                webbrowser.open(f"https://{target}.com")
+                return {"ok": True, "message": f"Opened https://{target}.com (fallback)"}
+            except Exception:
+                return {"ok": False, "message": str(e)}
 
     elif atype == "run_script":
-        lang = action.get("lang","python").lower()
-        code = action.get("code","")
+        lang = action.get("lang", "python").lower()
+        code = action.get("code", "")
         if not code.strip():
-            return {"ok":False,"message":"No code provided"}
+            return {"ok": False, "message": "No code provided"}
         try:
             ext = {
-                "python":".py","py":".py","bash":".sh","shell":".sh",
-                "powershell":".ps1","batch":".bat","js":".js","javascript":".js"
-            }.get(lang,".py")
-            with tempfile.NamedTemporaryFile(mode="w",suffix=ext,delete=False,encoding="utf-8") as f:
-                f.write(code); tmp = f.name
-            if lang in ("python","py"):
-                proc = subprocess.run(["python",tmp],capture_output=True,text=True,timeout=30)
-            elif lang in ("bash","shell"):
-                proc = subprocess.run(["bash",tmp],capture_output=True,text=True,timeout=30)
+                "python": ".py", "py": ".py", "bash": ".sh", "shell": ".sh",
+                "powershell": ".ps1", "batch": ".bat", "js": ".js", "javascript": ".js"
+            }.get(lang, ".py")
+            with tempfile.NamedTemporaryFile(mode="w", suffix=ext, delete=False, encoding="utf-8") as f:
+                f.write(code)
+                tmp = f.name
+            if lang in ("python", "py"):
+                proc = subprocess.run(["python", tmp], capture_output=True, text=True, timeout=30)
+            elif lang in ("bash", "shell"):
+                proc = subprocess.run(["bash", tmp], capture_output=True, text=True, timeout=30)
             elif lang == "powershell":
-                proc = subprocess.run(["powershell","-File",tmp],capture_output=True,text=True,timeout=30)
+                proc = subprocess.run(["powershell", "-File", tmp], capture_output=True, text=True, timeout=30)
             else:
-                proc = subprocess.run(["python",tmp],capture_output=True,text=True,timeout=30)
-            os.unlink(tmp)
-            out = (proc.stdout or "")+(proc.stderr or "")
-            return {"ok":proc.returncode==0,"message":out.strip() or "Executed (no output)"}
+                proc = subprocess.run(["python", tmp], capture_output=True, text=True, timeout=30)
+            try:
+                os.unlink(tmp)
+            except Exception:
+                pass
+            out = (proc.stdout or "") + (proc.stderr or "")
+            return {
+                "ok": proc.returncode == 0,
+                "message": out.strip() or "Script executed — no output.",
+                "returncode": proc.returncode,
+            }
         except subprocess.TimeoutExpired:
-            return {"ok":False,"message":"Script timed out (30s)"}
+            return {"ok": False, "message": "Script timed out (30s)"}
         except Exception as e:
-            return {"ok":False,"message":str(e)}
+            return {"ok": False, "message": str(e)}
+
+    elif atype == "write_file":
+        path_str = action.get("path", "").strip()
+        content  = action.get("content", "")
+        if not path_str:
+            return {"ok": False, "message": "No path provided"}
+        try:
+            p = Path(path_str).expanduser()
+            # Resolve relative paths to home directory
+            if not p.is_absolute():
+                p = Path.home() / p
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(content, encoding="utf-8")
+            return {"ok": True, "message": f"File written: {p} ({len(content)} chars)", "path": str(p)}
+        except Exception as e:
+            return {"ok": False, "message": str(e)}
 
     elif atype == "read_file":
-        p = Path(target)
+        p = Path(target).expanduser()
+        if not p.is_absolute():
+            p = Path.home() / p
         try:
-            if not p.exists(): return {"ok":False,"message":f"Not found: {target}"}
-            if p.stat().st_size > 5*1024*1024: return {"ok":False,"message":"File too large (>5MB)"}
-            content = p.read_text(encoding="utf-8",errors="replace")
-            return {"ok":True,"message":f"Read {len(content)} chars","content":content[:8000]}
+            if not p.exists():
+                return {"ok": False, "message": f"Not found: {target}"}
+            if p.stat().st_size > 5 * 1024 * 1024:
+                return {"ok": False, "message": "File too large (>5MB)"}
+            content = p.read_text(encoding="utf-8", errors="replace")
+            return {"ok": True, "message": f"Read {len(content)} chars", "content": content[:8000]}
         except Exception as e:
-            return {"ok":False,"message":str(e)}
+            return {"ok": False, "message": str(e)}
 
     elif atype == "send_socials":
-        soc = {k:v for k,v in settings.get("socials",{}).items() if v and v.strip()}
-        if not soc: return {"ok":False,"message":"No socials configured"}
-        return {"ok":True,"message":"\n".join(f"{k}: {v}" for k,v in soc.items()),"display":True}
+        soc = {k: v for k, v in settings.get("socials", {}).items() if v and v.strip()}
+        if not soc:
+            return {"ok": False, "message": "No socials configured"}
+        return {"ok": True, "message": "\n".join(f"{k}: {v}" for k, v in soc.items()), "display": True}
 
     elif atype == "search":
-        q = action.get("query",target)
-        url = f"https://www.google.com/search?q={q.replace(' ','+')}"
+        q = action.get("query", target)
+        url = f"https://www.google.com/search?q={q.replace(' ', '+')}"
         webbrowser.open(url)
-        return {"ok":True,"message":f"Searched: {q}"}
+        return {"ok": True, "message": f"Searched: {q}"}
 
-    return {"ok":False,"message":"Unknown action"}
+    elif atype == "list_files":
+        path_str = action.get("path", "~").strip()
+        p = Path(path_str).expanduser()
+        try:
+            if not p.exists():
+                return {"ok": False, "message": f"Path not found: {path_str}"}
+            if p.is_file():
+                return {"ok": True, "message": f"{p} is a file", "files": [str(p)]}
+            files = [str(f.relative_to(p)) for f in sorted(p.iterdir())[:100]]
+            return {"ok": True, "message": f"{len(files)} items in {p}", "files": files}
+        except Exception as e:
+            return {"ok": False, "message": str(e)}
 
-# ── Screenshot + Vision ───────────────────────────────────────────────────
+    return {"ok": False, "message": "Unknown action"}
+
+# ── Screenshot ─────────────────────────────────────────────────────────────
 def take_screenshot() -> Optional[str]:
     try:
         import mss
@@ -255,14 +460,15 @@ def take_screenshot() -> Optional[str]:
             img = sct.grab(mon)
             try:
                 from PIL import Image
-                pil = Image.frombytes("RGB",img.size,img.bgra,"raw","BGRX")
+                pil = Image.frombytes("RGB", img.size, img.bgra, "raw", "BGRX")
                 if pil.width > 1280:
-                    r = 1280/pil.width
-                    pil = pil.resize((1280,int(pil.height*r)))
-                buf = io.BytesIO(); pil.save(buf,"PNG",optimize=True)
+                    r = 1280 / pil.width
+                    pil = pil.resize((1280, int(pil.height * r)))
+                buf = io.BytesIO()
+                pil.save(buf, "PNG", optimize=True)
                 return base64.b64encode(buf.getvalue()).decode()
             except ImportError:
-                raw = mss.tools.to_png(img.rgb,img.size)
+                raw = mss.tools.to_png(img.rgb, img.size)
                 return base64.b64encode(raw).decode()
     except Exception:
         pass
@@ -270,43 +476,63 @@ def take_screenshot() -> Optional[str]:
         import pyautogui
         from PIL import Image
         img = pyautogui.screenshot()
-        buf = io.BytesIO(); img.save(buf,"PNG",optimize=True)
+        buf = io.BytesIO()
+        img.save(buf, "PNG", optimize=True)
         return base64.b64encode(buf.getvalue()).decode()
     except Exception:
         return None
 
-async def is_screen_request(text:str, api_key:str) -> bool:
-    kw = ("screen","écran","mon écran","regarde","capture","screenshot","display","bureau","fenêtre")
-    if any(k in text.lower() for k in kw):
-        return True
-    return False
+async def is_screen_request(text: str) -> bool:
+    kw = ("screen", "écran", "mon écran", "regarde", "capture", "screenshot", "display", "bureau", "fenêtre")
+    return any(k in text.lower() for k in kw)
 
-async def call_vision(api_key:str, img_b64:str, msg:str, sys_prompt:str) -> str:
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.post(
-                OPENROUTER_URL,
-                headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json",
-                         "HTTP-Referer":"https://kyrox.nemea.uk","X-Title":"Kyrox AI"},
-                json={
-                    "model":VISION_MODEL,
-                    "messages":[
-                        {"role":"system","content":sys_prompt},
-                        {"role":"user","content":[
-                            {"type":"image_url","image_url":{"url":f"data:image/png;base64,{img_b64}"}},
-                            {"type":"text","text":msg or "Describe my screen in detail."}
-                        ]}
-                    ],
-                    "max_tokens":1024,
-                }
-            )
+async def call_vision(api_key: str, img_b64: str, msg: str, sys_prompt: str) -> str:
+    last_err = "No vision model available"
+    for vision_model in VISION_MODELS:
+        try:
+            async with httpx.AsyncClient(timeout=45) as client:
+                r = await client.post(
+                    OPENROUTER_URL,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": "https://kyrox.nemea.uk",
+                        "X-Title": "Kyrox AI",
+                    },
+                    json={
+                        "model": vision_model,
+                        "messages": [
+                            {"role": "system", "content": sys_prompt},
+                            {"role": "user", "content": [
+                                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}"}},
+                                {"type": "text", "text": msg or "Describe my screen in detail."}
+                            ]}
+                        ],
+                        "max_tokens": 1024,
+                    }
+                )
             if r.status_code == 200:
-                return r.json()["choices"][0]["message"]["content"]
-            return f"Vision error {r.status_code}"
-    except Exception as e:
-        return f"Vision error: {e}"
+                data = r.json()
+                content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                if content:
+                    return content
+                last_err = f"{vision_model}: empty response"
+                continue
+            elif r.status_code in (404, 400, 422):
+                last_err = f"{vision_model}: HTTP {r.status_code}"
+                continue
+            elif r.status_code == 429:
+                last_err = f"{vision_model}: rate limited"
+                continue
+            else:
+                last_err = f"{vision_model}: HTTP {r.status_code}"
+                continue
+        except Exception as e:
+            last_err = f"{vision_model}: {e}"
+            continue
+    return f"⚠ Vision unavailable — {last_err}"
 
-# ── Auto-memory extraction ────────────────────────────────────────────────
+# ── Auto-memory extraction ─────────────────────────────────────────────────
 MEMORY_PATTERNS = [
     (r"(?:my name is|i'm called|call me|je m'appelle|mon nom est)\s+(\w+)", "User's name is {}"),
     (r"i(?:'m| am)\s+(\d+)\s*(?:years?\s*old|ans?)", "User is {} years old"),
@@ -315,8 +541,11 @@ MEMORY_PATTERNS = [
     (r"i\s+(?:live|am)\s+in\s+([^,.!?\n]{3,40})", "User lives in {}"),
     (r"i(?:'m| am)\s+(?:a\s+)?(?:developer|programmer|designer|student|engineer|gamer|streamer|artist)", "User is a {}"),
     (r"my\s+(?:favorite|fav)\s+\w+\s+is\s+([^,.!?\n]{2,30})", "User's favorite: {}"),
+    (r"j(?:e suis|'suis)\s+([^,.!?\n]{3,40})", "L'utilisateur est: {}"),
+    (r"(?:j'habite|je vis)\s+à?\s+([^,.!?\n]{3,40})", "L'utilisateur habite: {}"),
 ]
-def extract_facts(text:str) -> list[str]:
+
+def extract_facts(text: str) -> list[str]:
     facts = []
     for pat, tmpl in MEMORY_PATTERNS:
         m = re.search(pat, text.lower())
@@ -327,19 +556,19 @@ def extract_facts(text:str) -> list[str]:
 
 # ── FastAPI app ────────────────────────────────────────────────────────────
 app = FastAPI(title="Kyrox AI")
-app.add_middleware(CORSMiddleware,allow_origins=["*"],allow_methods=["*"],allow_headers=["*"])
-app.mount("/static",StaticFiles(directory=str(STATIC_DIR)),name="static")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # ── REST endpoints ─────────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    return HTMLResponse((TEMPLATES_DIR/"index.html").read_text(encoding="utf-8"))
+    return HTMLResponse((TEMPLATES_DIR / "index.html").read_text(encoding="utf-8"))
 
 @app.get("/api/settings")
 async def get_settings():
     s = load_settings()
     s["free_models"]   = FREE_MODELS
-    s["current_model"] = FREE_MODELS[s.get("current_model_index",0) % len(FREE_MODELS)]
+    s["current_model"] = FREE_MODELS[s.get("current_model_index", 0) % len(FREE_MODELS)]
     return s
 
 class SettingsIn(BaseModel):
@@ -350,56 +579,57 @@ class SettingsIn(BaseModel):
     system_prompt:      Optional[str]  = None
     wakeword:           Optional[str]  = None
     tts:                Optional[bool] = None
+    tts_voice:          Optional[str]  = None
     socials:            Optional[dict] = None
     apps:               Optional[dict] = None
     context_files:      Optional[list] = None
+    auto_scan_home:     Optional[bool] = None
 
 @app.post("/api/settings")
 async def post_settings(body: SettingsIn):
     s = load_settings()
     update = body.model_dump(exclude_none=True)
     for k, v in update.items():
-        if k in ("socials","apps") and isinstance(v,dict):
-            s[k] = {**s.get(k,{}),**v}
+        if k in ("socials", "apps") and isinstance(v, dict):
+            s[k] = {**s.get(k, {}), **v}
         else:
             s[k] = v
-    # re-scan context files if paths changed
     if "context_files" in update:
-        s["context_text"] = scan_context_files(s.get("context_files",[]))
+        s["context_text"] = scan_context_files(s.get("context_files", []))
     save_settings(s)
-    return {"ok":True,"settings":s}
+    return {"ok": True, "settings": s}
 
 @app.post("/api/action")
 async def run_action(req: Request):
     body = await req.json()
     s = load_settings()
-    return execute_pc_action(body.get("action",{}), s)
+    return execute_pc_action(body.get("action", {}), s)
 
 @app.get("/api/users")
 async def get_users():
     return list_users()
 
 @app.get("/api/history/{uid}")
-async def get_history(uid:str):
+async def get_history(uid: str):
     return load_history(uid)
 
 @app.delete("/api/history/{uid}")
-async def del_history(uid:str):
-    save_history(uid,[])
-    return {"ok":True}
+async def del_history(uid: str):
+    save_history(uid, [])
+    return {"ok": True}
 
 @app.get("/api/memory/{uid}")
-async def get_memory(uid:str):
+async def get_memory(uid: str):
     return load_memory(uid)
 
 @app.post("/api/memory/{uid}")
-async def post_memory(uid:str, req:Request):
+async def post_memory(uid: str, req: Request):
     body = await req.json()
     m = load_memory(uid)
     if "facts"       in body: m["facts"]       = body["facts"]
-    if "preferences" in body: m["preferences"] = {**m.get("preferences",{}),**body["preferences"]}
-    save_memory(uid,m)
-    return {"ok":True,"memory":m}
+    if "preferences" in body: m["preferences"] = {**m.get("preferences", {}), **body["preferences"]}
+    save_memory(uid, m)
+    return {"ok": True, "memory": m}
 
 @app.get("/api/status")
 async def get_status():
@@ -408,208 +638,256 @@ async def get_status():
         try:
             async with httpx.AsyncClient(timeout=3) as c:
                 await c.get(f"{s['ollama_url']}/api/tags")
-            return {"ok":True,"backend":"ollama","model":s.get("ollama_model")}
+            return {"ok": True, "backend": "ollama", "model": s.get("ollama_model")}
         except:
-            return {"ok":False,"backend":"ollama","error":"Ollama offline"}
-    has_key = bool(s.get("openrouter_key","").strip())
-    idx = s.get("current_model_index",0)
-    return {"ok":has_key,"backend":"openrouter",
-            "model":FREE_MODELS[idx%len(FREE_MODELS)],"has_key":has_key}
+            return {"ok": False, "backend": "ollama", "error": "Ollama offline"}
+    has_key = bool(s.get("openrouter_key", "").strip())
+    idx = s.get("current_model_index", 0)
+    return {"ok": has_key, "backend": "openrouter",
+            "model": FREE_MODELS[idx % len(FREE_MODELS)], "has_key": has_key}
 
 @app.post("/api/scan-context")
-async def scan_context(req:Request):
+async def scan_context(req: Request):
     body = await req.json()
-    paths = body.get("paths",[])
+    paths = body.get("paths", [])
     text = scan_context_files(paths)
     s = load_settings()
     s["context_files"] = paths
     s["context_text"]  = text
     save_settings(s)
-    return {"ok":True,"chars":len(text),"preview":text[:200]}
+    return {"ok": True, "chars": len(text), "preview": text[:200]}
+
+@app.get("/api/voices")
+async def get_voices():
+    """Return list of available system TTS voices."""
+    os_name = platform.system()
+    voices = []
+    try:
+        if os_name == "Windows":
+            import pyttsx3
+            engine = pyttsx3.init()
+            for v in engine.getProperty("voices"):
+                voices.append({"id": v.id, "name": v.name, "lang": getattr(v, "languages", [""])[0] if v.languages else ""})
+            engine.stop()
+        elif os_name == "Darwin":
+            result = subprocess.run(["say", "-v", "?"], capture_output=True, text=True)
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if parts:
+                    voices.append({"id": parts[0], "name": parts[0], "lang": parts[1] if len(parts) > 1 else ""})
+    except Exception:
+        pass
+    return {"voices": voices}
 
 # ── WebSocket chat ─────────────────────────────────────────────────────────
 @app.websocket("/ws/chat/{uid}")
-async def chat_ws(ws:WebSocket, uid:str):
+async def chat_ws(ws: WebSocket, uid: str):
     await ws.accept()
 
     history  = load_history(uid)
     settings = load_settings()
 
-    # Send model info on connect
-    idx = settings.get("current_model_index",0)
-    await ws.send_text(json.dumps({"type":"model_info","model":FREE_MODELS[idx%len(FREE_MODELS)]}))
+    # Auto-scan user profile files on connect
+    profile_text = auto_scan_user_profile()
+    if profile_text:
+        await ws.send_text(json.dumps({"type": "profile_scanned", "chars": len(profile_text)}))
+
+    idx = settings.get("current_model_index", 0)
+    await ws.send_text(json.dumps({"type": "model_info", "model": FREE_MODELS[idx % len(FREE_MODELS)]}))
 
     try:
         while True:
             raw      = await ws.receive_text()
             payload  = json.loads(raw)
-            action   = payload.get("action","chat")
+            action   = payload.get("action", "chat")
             settings = load_settings()
             memory   = load_memory(uid)
 
             # ── Control actions ──────────────────────────────────────────
             if action == "clear":
                 history = []
-                save_history(uid,history)
-                await ws.send_text(json.dumps({"type":"cleared"}))
+                save_history(uid, history)
+                await ws.send_text(json.dumps({"type": "cleared"}))
                 continue
 
             if action == "learn":
-                fact = payload.get("fact","").strip()
-                if fact and fact not in memory.get("facts",[]):
-                    memory.setdefault("facts",[]).append(fact)
-                    save_memory(uid,memory)
-                await ws.send_text(json.dumps({"type":"learned"}))
+                fact = payload.get("fact", "").strip()
+                if fact and fact not in memory.get("facts", []):
+                    memory.setdefault("facts", []).append(fact)
+                    save_memory(uid, memory)
+                await ws.send_text(json.dumps({"type": "learned"}))
                 continue
 
             # ── Chat ─────────────────────────────────────────────────────
-            user_msg = payload.get("message","").strip()
+            user_msg = payload.get("message", "").strip()
             if not user_msg:
                 continue
 
-            # Auto-extract memory facts
             new_facts = extract_facts(user_msg)
             changed = False
             for f in new_facts:
-                if f not in memory.get("facts",[]):
-                    memory.setdefault("facts",[]).append(f)
+                if f not in memory.get("facts", []):
+                    memory.setdefault("facts", []).append(f)
                     changed = True
             if changed:
-                save_memory(uid,memory)
-                await ws.send_text(json.dumps({"type":"learned"}))
+                save_memory(uid, memory)
+                await ws.send_text(json.dumps({"type": "learned"}))
 
-            history.append({"role":"user","content":user_msg})
+            history.append({"role": "user", "content": user_msg})
 
-            # Build system prompt
-            mem_ctx = memory_summary(memory)
-            ctx_text = settings.get("context_text","")
+            mem_ctx  = memory_summary(memory)
+            ctx_text = settings.get("context_text", "")
             sys_prompt = settings["system_prompt"]
+
+            # Inject profile scan
+            if profile_text:
+                sys_prompt = f"[USER PROFILE — fichiers détectés sur son PC]:\n{profile_text}\n\n" + sys_prompt
+
             if ctx_text:
-                sys_prompt = f"[CONTEXT FILES — info about the user's PC/projects]:\n{ctx_text}\n\n" + sys_prompt
+                sys_prompt = f"[CONTEXT FILES — projets/PC de l'utilisateur]:\n{ctx_text}\n\n" + sys_prompt
             if mem_ctx:
                 sys_prompt = mem_ctx + "\n\n" + sys_prompt
 
+            # Inject relevant skills based on message
+            skills = get_relevant_skills(user_msg)
+            if skills:
+                sys_prompt = sys_prompt + "\n\n" + skills
+
             # ── Vision shortcut ──────────────────────────────────────────
-            api_key = settings.get("openrouter_key","").strip()
-            if (api_key and settings.get("backend","openrouter") == "openrouter"
-                    and await is_screen_request(user_msg, api_key)):
-                await ws.send_text(json.dumps({"type":"token","content":"📸 Capturing screen…\n\n"}))
+            api_key = settings.get("openrouter_key", "").strip()
+            if (api_key and settings.get("backend", "openrouter") == "openrouter"
+                    and await is_screen_request(user_msg)):
+                await ws.send_text(json.dumps({"type": "token", "content": "📸 Capture en cours…\n\n"}))
                 img = take_screenshot()
                 if img is None:
-                    err = "⚠ Couldn't capture screen. Install: pip install mss pillow"
-                    await ws.send_text(json.dumps({"type":"done","content":err}))
-                    history.append({"role":"assistant","content":err})
-                    save_history(uid,history)
+                    err = "⚠ Impossible de capturer l'écran. Installe: pip install mss pillow"
+                    await ws.send_text(json.dumps({"type": "done", "content": err}))
+                    history.append({"role": "assistant", "content": err})
+                    save_history(uid, history)
                     continue
-                await ws.send_text(json.dumps({"type":"model_info","model":VISION_MODEL}))
-                resp = await call_vision(api_key,img,user_msg,sys_prompt)
-                history.append({"role":"assistant","content":resp})
-                save_history(uid,history)
-                await ws.send_text(json.dumps({"type":"done","content":resp}))
+                await ws.send_text(json.dumps({"type": "model_info", "model": "vision"}))
+                resp = await call_vision(api_key, img, user_msg, sys_prompt)
+                history.append({"role": "assistant", "content": resp})
+                save_history(uid, history)
+                await ws.send_text(json.dumps({"type": "done", "content": resp}))
                 continue
 
             # ── LLM call ─────────────────────────────────────────────────
-            messages = [{"role":"system","content":sys_prompt}] + history[-24:]
+            messages = [{"role": "system", "content": sys_prompt}] + history[-24:]
             full_response = ""
             success = False
 
-            if settings.get("backend","openrouter") == "openrouter":
+            if settings.get("backend", "openrouter") == "openrouter":
                 if not api_key:
-                    await ws.send_text(json.dumps({"type":"error","content":"no_api_key"}))
+                    await ws.send_text(json.dumps({"type": "error", "content": "no_api_key"}))
                     history.pop()
                     continue
 
-                idx   = settings.get("current_model_index",0)
+                idx   = settings.get("current_model_index", 0)
                 tried = 0
                 while tried < len(FREE_MODELS):
                     model = FREE_MODELS[idx % len(FREE_MODELS)]
-                    await ws.send_text(json.dumps({"type":"model_info","model":model}))
+                    await ws.send_text(json.dumps({"type": "model_info", "model": model}))
                     try:
                         async with httpx.AsyncClient(timeout=90) as client:
                             async with client.stream(
                                 "POST", OPENROUTER_URL,
-                                headers={"Authorization":f"Bearer {api_key}",
-                                         "Content-Type":"application/json",
-                                         "HTTP-Referer":"https://kyrox.nemea.uk",
-                                         "X-Title":"Kyrox AI"},
-                                json={"model":model,"messages":messages,"stream":True},
+                                headers={"Authorization": f"Bearer {api_key}",
+                                         "Content-Type": "application/json",
+                                         "HTTP-Referer": "https://kyrox.nemea.uk",
+                                         "X-Title": "Kyrox AI"},
+                                json={"model": model, "messages": messages, "stream": True},
                             ) as resp:
                                 if resp.status_code == 429:
-                                    await ws.send_text(json.dumps({"type":"model_switch","from":model}))
-                                    idx = (idx+1)%len(FREE_MODELS); tried += 1; continue
+                                    await ws.send_text(json.dumps({"type": "model_switch", "from": model}))
+                                    idx = (idx + 1) % len(FREE_MODELS); tried += 1; continue
                                 if resp.status_code != 200:
-                                    idx = (idx+1)%len(FREE_MODELS); tried += 1; continue
+                                    idx = (idx + 1) % len(FREE_MODELS); tried += 1; continue
                                 async for line in resp.aiter_lines():
                                     if not line or not line.startswith("data:"): continue
                                     raw2 = line[5:].strip()
                                     if raw2 == "[DONE]": break
                                     try:
                                         chunk = json.loads(raw2)
-                                    except: continue
-                                    token = (chunk.get("choices",[{}])[0].get("delta",{}).get("content","")) or ""
+                                    except:
+                                        continue
+                                    token = (chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")) or ""
                                     full_response += token
                                     if token:
-                                        await ws.send_text(json.dumps({"type":"token","content":token}))
-                                settings["current_model_index"] = idx%len(FREE_MODELS)
+                                        await ws.send_text(json.dumps({"type": "token", "content": token}))
+                                settings["current_model_index"] = idx % len(FREE_MODELS)
                                 save_settings(settings)
-                                success = True; break
+                                success = True
+                                break
                     except Exception:
-                        idx = (idx+1)%len(FREE_MODELS); tried += 1
+                        idx = (idx + 1) % len(FREE_MODELS); tried += 1
 
                 if not success:
-                    await ws.send_text(json.dumps({"type":"error","content":"All models rate-limited. Try again shortly."}))
-                    history.pop(); continue
+                    await ws.send_text(json.dumps({"type": "error", "content": "Tous les modèles sont rate-limited. Réessaie dans un moment."}))
+                    history.pop()
+                    continue
 
             else:  # Ollama
                 try:
                     async with httpx.AsyncClient(timeout=120) as client:
                         async with client.stream(
                             "POST", f"{settings['ollama_url']}/api/chat",
-                            json={"model":settings["ollama_model"],"messages":messages,"stream":True},
+                            json={"model": settings["ollama_model"], "messages": messages, "stream": True},
                         ) as resp:
                             async for line in resp.aiter_lines():
                                 if not line: continue
                                 try:
                                     chunk = json.loads(line)
-                                except: continue
-                                token = chunk.get("message",{}).get("content","")
+                                except:
+                                    continue
+                                token = chunk.get("message", {}).get("content", "")
                                 full_response += token
                                 if token:
-                                    await ws.send_text(json.dumps({"type":"token","content":token}))
+                                    await ws.send_text(json.dumps({"type": "token", "content": token}))
                     success = True
                 except Exception as e:
-                    await ws.send_text(json.dumps({"type":"error","content":f"Ollama error: {e}"}))
-                    history.pop(); continue
+                    await ws.send_text(json.dumps({"type": "error", "content": f"Ollama error: {e}"}))
+                    history.pop()
+                    continue
 
             # Strip <think> blocks
-            clean = re.sub(r"<think>.*?</think>","",full_response,flags=re.DOTALL).strip()
+            clean = re.sub(r"<think>.*?</think>", "", full_response, flags=re.DOTALL).strip()
 
             # Parse action blocks
-            action_pattern = re.compile(r"```action\s*(.*?)\s*```",re.DOTALL)
+            action_pattern = re.compile(r"```action\s*(.*?)\s*```", re.DOTALL)
             actions_found  = []
             for m2 in action_pattern.finditer(clean):
-                try: actions_found.append(json.loads(m2.group(1)))
-                except: pass
-            display = action_pattern.sub("",clean).strip()
+                try:
+                    actions_found.append(json.loads(m2.group(1)))
+                except:
+                    pass
+            display = action_pattern.sub("", clean).strip()
 
             # Handle read_file inline
             for act in list(actions_found):
                 if act.get("type") == "read_file":
-                    res = execute_pc_action(act,settings)
-                    await ws.send_text(json.dumps({"type":"actions","actions":[act]}))
+                    res = execute_pc_action(act, settings)
+                    await ws.send_text(json.dumps({"type": "actions", "actions": [act], "results": {act.get("type"): res}}))
                     if res.get("ok") and res.get("content"):
-                        history.append({"role":"assistant","content":display})
-                        history.append({"role":"user","content":f"[File: {act.get('path')}]\n{res['content']}"})
-                    save_history(uid,history)
-                    await ws.send_text(json.dumps({"type":"done","content":display}))
-                    actions_found = [a for a in actions_found if a.get("type")!="read_file"]
+                        history.append({"role": "assistant", "content": display})
+                        history.append({"role": "user", "content": f"[File: {act.get('path')}]\n{res['content']}"})
+                    save_history(uid, history)
+                    await ws.send_text(json.dumps({"type": "done", "content": display}))
+                    actions_found = [a for a in actions_found if a.get("type") != "read_file"]
                     break
             else:
-                history.append({"role":"assistant","content":display})
-                save_history(uid,history)
+                history.append({"role": "assistant", "content": display})
+                save_history(uid, history)
+
                 if actions_found:
-                    await ws.send_text(json.dumps({"type":"actions","actions":actions_found}))
-                await ws.send_text(json.dumps({"type":"done","content":display}))
+                    results = {}
+                    for act in actions_found:
+                        if act.get("type") != "send_socials":
+                            res = execute_pc_action(act, settings)
+                            results[act.get("type", "")] = res
+                    await ws.send_text(json.dumps({"type": "actions", "actions": actions_found, "results": results}))
+
+                await ws.send_text(json.dumps({"type": "done", "content": display}))
 
     except WebSocketDisconnect:
         pass
