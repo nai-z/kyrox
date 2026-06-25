@@ -17,31 +17,16 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # ── Paths ──────────────────────────────────────────────────────────────────
-# Script lives at .../Kyrox/core/main.py
-# index.html can be in core/, core/templates/, or parent Kyrox/ — we find it.
-BASE_DIR = Path(__file__).parent  # .../Kyrox/core
-
-def _find_index() -> Path:
-    candidates = [
-        BASE_DIR / "templates" / "index.html",  # core/templates/index.html
-        BASE_DIR / "index.html",                 # core/index.html
-        BASE_DIR.parent / "templates" / "index.html",  # Kyrox/templates/index.html
-        BASE_DIR.parent / "index.html",          # Kyrox/index.html
-    ]
-    for p in candidates:
-        if p.exists():
-            return p
-    # Default: create templates dir next to main.py
-    (BASE_DIR / "templates").mkdir(exist_ok=True)
-    return BASE_DIR / "templates" / "index.html"
-
-INDEX_PATH    = _find_index()
-TEMPLATES_DIR = INDEX_PATH.parent
-STATIC_DIR    = BASE_DIR / "static"
-DATA_DIR      = BASE_DIR / "data"
+# Structure:
+#   main/
+#     core/main.py   ← __file__
+#     templates/index.html
+BASE_DIR      = Path(__file__).parent.parent   # main/
+TEMPLATES_DIR = BASE_DIR / "templates"         # main/templates/
+STATIC_DIR    = BASE_DIR / "static"            # main/static/
+DATA_DIR      = BASE_DIR / "data"              # main/data/
 STATIC_DIR.mkdir(exist_ok=True)
 DATA_DIR.mkdir(exist_ok=True)
-
 SETTINGS_FILE = DATA_DIR / "settings.json"
 
 FREE_MODELS = [
@@ -582,9 +567,12 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # ── REST endpoints ─────────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
-@app.get("/kyrox", response_class=HTMLResponse)
 async def index():
-    return HTMLResponse(INDEX_PATH.read_text(encoding="utf-8"))
+    return HTMLResponse((TEMPLATES_DIR / "index.html").read_text(encoding="utf-8"))
+
+@app.get("/kyrox", response_class=HTMLResponse)
+async def index_kyrox():
+    return HTMLResponse((TEMPLATES_DIR / "index.html").read_text(encoding="utf-8"))
 
 @app.get("/api/settings")
 async def get_settings():
