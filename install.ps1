@@ -80,7 +80,8 @@ function Download-Kyrox {
   $files = @(
     @{ remote = "core/main.py";         local = "core\main.py" },
     @{ remote = "templates/index.html"; local = "templates\index.html" },
-    @{ remote = "requirements.txt";     local = "requirements.txt" }
+    @{ remote = "requirements.txt";     local = "requirements.txt" },
+    @{ remote = "lens.py";              local = "lens.py" }
   )
 
   foreach ($f in $files) {
@@ -123,6 +124,7 @@ echo   From your phone: http://%COMPUTERNAME%/kyrox
 echo   Press Ctrl+C to stop
 echo.
 cd /d "$InstallDir"
+start "" /B pythonw lens.py
 python -m uvicorn core.main:app --host 0.0.0.0 --port 80
 "@
   Set-Content -Path "$launcherDir\kyrox.cmd" -Value $cmd -Encoding ASCII
@@ -133,6 +135,8 @@ Write-Host "`n  Starting Kyrox..." -ForegroundColor Magenta
 Write-Host "  Open in browser: http://127.0.0.1/kyrox" -ForegroundColor Cyan
 Write-Host "  From your phone (same WiFi): http://`$(hostname)/kyrox" -ForegroundColor Cyan
 Write-Host "  Press Ctrl+C to stop`n" -ForegroundColor DarkGray
+# Launch Lens overlay in background (no console window)
+Start-Process pythonw -ArgumentList "$InstallDir\lens.py" -WindowStyle Hidden
 python -m uvicorn core.main:app --host 0.0.0.0 --port 80
 "@
   Set-Content -Path "$launcherDir\kyrox.ps1" -Value $ps1 -Encoding UTF8
@@ -190,6 +194,8 @@ function Launch-Kyrox {
     Set-Location $InstallDir
     Start-Sleep 1
     Start-Process "http://127.0.0.1/kyrox" -ErrorAction SilentlyContinue
+    # Launch Lens overlay silently in background
+    Start-Process pythonw -ArgumentList "$InstallDir\lens.py" -WindowStyle Hidden
     python -m uvicorn core.main:app --host 0.0.0.0 --port 80
   }
 }
