@@ -1,34 +1,52 @@
-import asyncio
 import json
 import os
 import re
 from pathlib import Path
-from typing import AsyncGenerator
 
 import httpx
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent.parent
 SETTINGS_FILE = BASE_DIR / "settings.json"
-HISTORY_FILE = BASE_DIR / "history.json"
+HISTORY_FILE  = BASE_DIR / "history.json"
+
+# ── Free models rotation list (best first) ────────────────────────────────
+FREE_MODELS = [
+    "deepseek/deepseek-r1:free",
+    "deepseek/deepseek-v3:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "meta-llama/llama-4-maverick:free",
+    "qwen/qwen3-coder:free",
+    "qwen/qwen3-235b-a22b:free",
+    "google/gemma-3-12b-it:free",
+    "mistralai/mistral-small:free",
+    "nvidia/llama-3.1-nemotron-ultra-253b-v1:free",
+    "openrouter/auto",   # fallback: OpenRouter picks best available free model
+]
+
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # ── Default settings ───────────────────────────────────────────────────────
 DEFAULT_SETTINGS = {
-    "model": "llama3",
+    "backend": "openrouter",        # "openrouter" or "ollama"
+    "openrouter_key": "",
+    "current_model_index": 0,
+    "ollama_url": "http://localhost:11434",
+    "ollama_model": "llama3",
     "system_prompt": (
         "You are Kyrox, an intelligent AI companion. "
         "You are helpful, concise, and friendly. "
-        "When you reason through a problem, wrap your internal thinking in <think>...</think> tags. "
         "Always respond naturally as Kyrox."
     ),
-    "ollama_url": "http://localhost:11434",
     "tts_voice": "en-US-GuyNeural",
     "wakeword": "hey kyrox",
+    "show_thinking": True,
+    "tts": True,
 }
 
 
@@ -36,7 +54,6 @@ def load_settings() -> dict:
     if SETTINGS_FILE.exists():
         with open(SETTINGS_FILE) as f:
             data = json.load(f)
-        # merge with defaults for any missing keys
         return {**DEFAULT_SETTINGS, **data}
     return DEFAULT_SETTINGS.copy()
 
@@ -55,7 +72,7 @@ def load_history() -> list:
 
 def save_history(history: list):
     with open(HISTORY_FILE, "w") as f:
-        json.dump(history[-100:], f, indent=2)  # keep last 100 messages
+        json.dump(history[-100:], f, indent=2)
 
 
 # ── App ────────────────────────────────────────────────────────────────────
@@ -68,16 +85,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+static_dir = BASE_DIR / "static"
+static_dir.mkdir(exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 
 # ── Models ─────────────────────────────────────────────────────────────────
 class SettingsUpdate(BaseModel):
-    model: str | None = None
-    system_prompt: str | None = None
+    backend: str | None = None
+    openrouter_key: str | None = None
     ollama_url: str | None = None
+    ollama_model: str | None = None
+    system_prompt: str | None = None
     tts_voice: str | None = None
     wakeword: str | None = None
+    show_thinking: bool | None = None
+    tts: bool | None = None
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────
@@ -89,7 +112,10 @@ async def index():
 
 @app.get("/api/settings")
 async def get_settings():
-    return load_settings()
+    s = load_settings()
+    s["free_models"] = FREE_MODELS
+    s["current_model"] = FREE_MODELS[s.get("current_model_index", 0)]
+    return s
 
 
 @app.post("/api/settings")
@@ -112,43 +138,39 @@ async def clear_history():
     return {"ok": True}
 
 
-@app.get("/api/models")
-async def list_models():
-    settings = load_settings()
-    try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            r = await client.get(f"{settings['ollama_url']}/api/tags")
-            models = [m["name"] for m in r.json().get("models", [])]
-            return {"models": models}
-    except Exception:
-        return {"models": [], "error": "Ollama not reachable"}
-
-
 @app.get("/api/status")
 async def status():
     settings = load_settings()
-    try:
-        async with httpx.AsyncClient(timeout=3) as client:
-            await client.get(f"{settings['ollama_url']}/api/tags")
-            return {"ollama": True}
-    except Exception:
-        return {"ollama": False}
+    if settings.get("backend") == "ollama":
+        try:
+            async with httpx.AsyncClient(timeout=3) as client:
+                await client.get(f"{settings['ollama_url']}/api/tags")
+            return {"ok": True, "backend": "ollama", "model": settings.get("ollama_model")}
+        except Exception:
+            return {"ok": False, "backend": "ollama", "error": "Ollama not reachable"}
+    else:
+        has_key = bool(settings.get("openrouter_key", "").strip())
+        idx = settings.get("current_model_index", 0)
+        return {
+            "ok": has_key,
+            "backend": "openrouter",
+            "model": FREE_MODELS[idx] if idx < len(FREE_MODELS) else FREE_MODELS[0],
+            "has_key": has_key,
+        }
 
 
 # ── WebSocket chat ─────────────────────────────────────────────────────────
 @app.websocket("/ws/chat")
 async def chat_ws(ws: WebSocket):
     await ws.accept()
-    history = load_history()
+    history  = load_history()
     settings = load_settings()
 
     try:
         while True:
-            data = await ws.receive_text()
+            data    = await ws.receive_text()
             payload = json.loads(data)
-            action = payload.get("action", "chat")
-
-            # Reload settings each turn so changes apply live
+            action  = payload.get("action", "chat")
             settings = load_settings()
 
             if action == "clear":
@@ -161,108 +183,150 @@ async def chat_ws(ws: WebSocket):
             if not user_msg:
                 continue
 
-            # Add user message to history
             history.append({"role": "user", "content": user_msg})
 
-            # Build messages for Ollama
             messages = [{"role": "system", "content": settings["system_prompt"]}]
-            messages += history[-20:]  # last 20 turns for context
+            messages += history[-20:]
 
-            # Send "thinking started" signal
             await ws.send_text(json.dumps({"type": "thinking_start"}))
 
             full_response = ""
-            thinking_content = ""
-            in_think = False
-            think_buffer = ""
+            success = False
 
-            try:
-                async with httpx.AsyncClient(timeout=120) as client:
-                    async with client.stream(
-                        "POST",
-                        f"{settings['ollama_url']}/api/chat",
-                        json={
-                            "model": settings["model"],
-                            "messages": messages,
-                            "stream": True,
-                        },
-                    ) as response:
-                        async for line in response.aiter_lines():
-                            if not line:
-                                continue
-                            try:
-                                chunk = json.loads(line)
-                            except json.JSONDecodeError:
-                                continue
+            # ── OpenRouter backend ─────────────────────────────────────────
+            if settings.get("backend", "openrouter") == "openrouter":
+                api_key = settings.get("openrouter_key", "").strip()
+                if not api_key:
+                    await ws.send_text(json.dumps({
+                        "type": "error",
+                        "content": "no_api_key",
+                    }))
+                    history.pop()
+                    continue
 
-                            token = chunk.get("message", {}).get("content", "")
-                            full_response += token
+                idx = settings.get("current_model_index", 0)
+                tried = 0
 
-                            # Parse <think>...</think> in real-time
-                            think_buffer += token
-                            while True:
-                                if not in_think:
-                                    start = think_buffer.find("<think>")
-                                    if start != -1:
-                                        # emit text before <think>
-                                        before = think_buffer[:start]
-                                        if before:
-                                            await ws.send_text(json.dumps({
-                                                "type": "token",
-                                                "content": before,
-                                            }))
-                                        think_buffer = think_buffer[start + 7:]
-                                        in_think = True
-                                    else:
-                                        # no think tag yet, emit safe prefix
-                                        safe = think_buffer[:-7] if len(think_buffer) > 7 else ""
-                                        if safe:
-                                            await ws.send_text(json.dumps({
-                                                "type": "token",
-                                                "content": safe,
-                                            }))
-                                            think_buffer = think_buffer[len(safe):]
+                while tried < len(FREE_MODELS):
+                    model = FREE_MODELS[idx % len(FREE_MODELS)]
+                    await ws.send_text(json.dumps({
+                        "type": "model_info",
+                        "model": model,
+                    }))
+
+                    try:
+                        async with httpx.AsyncClient(timeout=60) as client:
+                            async with client.stream(
+                                "POST",
+                                OPENROUTER_URL,
+                                headers={
+                                    "Authorization": f"Bearer {api_key}",
+                                    "Content-Type": "application/json",
+                                    "HTTP-Referer": "https://github.com/nai-z/kyrox",
+                                    "X-Title": "Kyrox AI",
+                                },
+                                json={
+                                    "model": model,
+                                    "messages": messages,
+                                    "stream": True,
+                                },
+                            ) as response:
+                                if response.status_code == 429:
+                                    # Rate limited — try next model
+                                    await ws.send_text(json.dumps({
+                                        "type": "model_switch",
+                                        "reason": "rate_limit",
+                                        "from": model,
+                                    }))
+                                    idx = (idx + 1) % len(FREE_MODELS)
+                                    tried += 1
+                                    continue
+
+                                if response.status_code != 200:
+                                    idx = (idx + 1) % len(FREE_MODELS)
+                                    tried += 1
+                                    continue
+
+                                async for line in response.aiter_lines():
+                                    if not line or not line.startswith("data:"):
+                                        continue
+                                    raw = line[5:].strip()
+                                    if raw == "[DONE]":
                                         break
-                                else:
-                                    end = think_buffer.find("</think>")
-                                    if end != -1:
-                                        thinking_content += think_buffer[:end]
+                                    try:
+                                        chunk = json.loads(raw)
+                                    except json.JSONDecodeError:
+                                        continue
+                                    token = (
+                                        chunk.get("choices", [{}])[0]
+                                        .get("delta", {})
+                                        .get("content", "")
+                                    ) or ""
+                                    full_response += token
+                                    if token:
                                         await ws.send_text(json.dumps({
-                                            "type": "thinking",
-                                            "content": thinking_content,
+                                            "type": "token",
+                                            "content": token,
                                         }))
-                                        thinking_content = ""
-                                        think_buffer = think_buffer[end + 8:]
-                                        in_think = False
-                                    else:
-                                        # accumulate thinking
-                                        thinking_content += think_buffer
-                                        await ws.send_text(json.dumps({
-                                            "type": "thinking_token",
-                                            "content": think_buffer,
-                                        }))
-                                        think_buffer = ""
-                                        break
 
-                            if chunk.get("done"):
-                                # flush remaining buffer
-                                if think_buffer and not in_think:
+                                # Save current model index so next msg starts here
+                                settings["current_model_index"] = idx % len(FREE_MODELS)
+                                save_settings(settings)
+                                success = True
+                                break
+
+                    except Exception:
+                        idx = (idx + 1) % len(FREE_MODELS)
+                        tried += 1
+
+                if not success:
+                    await ws.send_text(json.dumps({
+                        "type": "error",
+                        "content": "Tous les modèles gratuits sont en limite. Réessaie dans quelques minutes.",
+                    }))
+                    history.pop()
+                    continue
+
+            # ── Ollama backend ─────────────────────────────────────────────
+            else:
+                try:
+                    async with httpx.AsyncClient(timeout=120) as client:
+                        async with client.stream(
+                            "POST",
+                            f"{settings['ollama_url']}/api/chat",
+                            json={
+                                "model": settings["ollama_model"],
+                                "messages": messages,
+                                "stream": True,
+                            },
+                        ) as response:
+                            async for line in response.aiter_lines():
+                                if not line:
+                                    continue
+                                try:
+                                    chunk = json.loads(line)
+                                except json.JSONDecodeError:
+                                    continue
+                                token = chunk.get("message", {}).get("content", "")
+                                full_response += token
+                                if token:
                                     await ws.send_text(json.dumps({
                                         "type": "token",
-                                        "content": think_buffer,
+                                        "content": token,
                                     }))
+                    success = True
+                except Exception as e:
+                    await ws.send_text(json.dumps({
+                        "type": "error",
+                        "content": f"Ollama error: {str(e)}",
+                    }))
+                    history.pop()
+                    continue
 
-            except Exception as e:
-                await ws.send_text(json.dumps({
-                    "type": "error",
-                    "content": f"Ollama error: {str(e)}",
-                }))
-                continue
+            clean_response = re.sub(
+                r"<think>.*?</think>", "", full_response, flags=re.DOTALL
+            ).strip()
 
-            # Clean final response (remove think tags)
-            clean_response = re.sub(r"<think>.*?</think>", "", full_response, flags=re.DOTALL).strip()
-
-            # Save to history
             history.append({"role": "assistant", "content": clean_response})
             save_history(history)
 
