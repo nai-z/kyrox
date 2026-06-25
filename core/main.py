@@ -38,17 +38,8 @@ FREE_MODELS = [
     "nvidia/llama-3.1-nemotron-ultra-253b-v1:free",
     "openrouter/auto",
 ]
-
-# Vision models tried in order — fallback if one gives 404/error
-VISION_MODELS = [
-    "google/gemini-flash-1.5",
-    "google/gemini-2.0-flash-001",
-    "openai/gpt-4o-mini",
-    "anthropic/claude-3-haiku",
-    "meta-llama/llama-3.2-11b-vision-instruct:free",
-]
-
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+VISION_MODEL   = "google/gemini-flash-1.5"
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are Kyrox, an elite AI companion inspired by JARVIS from Iron Man. "
@@ -63,8 +54,6 @@ DEFAULT_SYSTEM_PROMPT = (
     "```action\n{\"type\":\"run_script\",\"lang\":\"python\",\"code\":\"...\"}\n```\n"
     "When asked to read a file:\n"
     "```action\n{\"type\":\"read_file\",\"path\":\"...\"}\n```\n"
-    "When asked to create/write/save a file:\n"
-    "```action\n{\"type\":\"write_file\",\"path\":\"path/to/file.ext\",\"content\":\"file content here\"}\n```\n"
     "When asked to share socials / send links:\n"
     "```action\n{\"type\":\"send_socials\"}\n```\n"
     "Never explain action blocks to the user. Never say emoji names. "
@@ -80,15 +69,14 @@ DEFAULT_SETTINGS = {
     "system_prompt": DEFAULT_SYSTEM_PROMPT,
     "wakeword": "hey kyrox",
     "tts": True,
-    "tts_voice": "",
     "socials": {"twitch":"","twitter":"","instagram":"","youtube":"","discord":"","github":""},
     "apps": {
         "steam":"steam://open/main","spotify":"spotify:","discord":"discord:",
         "chrome":"chrome","firefox":"firefox","vscode":"code",
         "notepad":"notepad","calculator":"calc","explorer":"explorer",
     },
-    "context_files": [],
-    "context_text": "",
+    "context_files": [],   # list of paths scanned at startup
+    "context_text": "",    # aggregated content from .md/.txt files
 }
 
 # ── Settings ───────────────────────────────────────────────────────────────
@@ -155,6 +143,7 @@ def memory_summary(memory: dict) -> str:
 
 # ── Context file reader (.md / .txt) ──────────────────────────────────────
 def scan_context_files(paths: list[str]) -> str:
+    """Read .md and .txt files from given paths, return combined text (truncated)."""
     chunks = []
     for raw in paths:
         p = Path(raw).expanduser()
@@ -171,7 +160,7 @@ def scan_context_files(paths: list[str]) -> str:
                     except Exception:
                         pass
     combined = "\n\n---\n\n".join(chunks)
-    return combined[:12000]
+    return combined[:12000]   # hard cap
 
 # ── PC Actions ────────────────────────────────────────────────────────────
 def execute_pc_action(action: dict, settings: dict) -> dict:
@@ -226,32 +215,11 @@ def execute_pc_action(action: dict, settings: dict) -> dict:
                 proc = subprocess.run(["powershell","-File",tmp],capture_output=True,text=True,timeout=30)
             else:
                 proc = subprocess.run(["python",tmp],capture_output=True,text=True,timeout=30)
-            try:
-                os.unlink(tmp)
-            except Exception:
-                pass
+            os.unlink(tmp)
             out = (proc.stdout or "")+(proc.stderr or "")
-            return {
-                "ok": proc.returncode == 0,
-                "message": out.strip() or "Script executed — no output.",
-                "returncode": proc.returncode,
-            }
+            return {"ok":proc.returncode==0,"message":out.strip() or "Executed (no output)"}
         except subprocess.TimeoutExpired:
             return {"ok":False,"message":"Script timed out (30s)"}
-        except Exception as e:
-            return {"ok":False,"message":str(e)}
-
-    elif atype == "write_file":
-        # Create or overwrite a file with given content
-        path_str = action.get("path","").strip()
-        content  = action.get("content","")
-        if not path_str:
-            return {"ok":False,"message":"No path provided"}
-        try:
-            p = Path(path_str).expanduser()
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(content, encoding="utf-8")
-            return {"ok":True,"message":f"File written: {p} ({len(content)} chars)","path":str(p)}
         except Exception as e:
             return {"ok":False,"message":str(e)}
 
@@ -278,7 +246,7 @@ def execute_pc_action(action: dict, settings: dict) -> dict:
 
     return {"ok":False,"message":"Unknown action"}
 
-# ── Screenshot ────────────────────────────────────────────────────────────
+# ── Screenshot + Vision ───────────────────────────────────────────────────
 def take_screenshot() -> Optional[str]:
     try:
         import mss
@@ -307,58 +275,36 @@ def take_screenshot() -> Optional[str]:
     except Exception:
         return None
 
-async def is_screen_request(text: str) -> bool:
+async def is_screen_request(text:str, api_key:str) -> bool:
     kw = ("screen","écran","mon écran","regarde","capture","screenshot","display","bureau","fenêtre")
-    return any(k in text.lower() for k in kw)
+    if any(k in text.lower() for k in kw):
+        return True
+    return False
 
-async def call_vision(api_key: str, img_b64: str, msg: str, sys_prompt: str) -> str:
-    """Try vision models in order, skip on 404/401/model errors."""
-    last_err = "No vision model available"
-    for vision_model in VISION_MODELS:
-        try:
-            async with httpx.AsyncClient(timeout=45) as client:
-                r = await client.post(
-                    OPENROUTER_URL,
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                        "HTTP-Referer": "https://kyrox.nemea.uk",
-                        "X-Title": "Kyrox AI",
-                    },
-                    json={
-                        "model": vision_model,
-                        "messages": [
-                            {"role": "system", "content": sys_prompt},
-                            {"role": "user", "content": [
-                                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}"}},
-                                {"type": "text", "text": msg or "Describe my screen in detail."}
-                            ]}
-                        ],
-                        "max_tokens": 1024,
-                    }
-                )
+async def call_vision(api_key:str, img_b64:str, msg:str, sys_prompt:str) -> str:
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.post(
+                OPENROUTER_URL,
+                headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json",
+                         "HTTP-Referer":"https://kyrox.nemea.uk","X-Title":"Kyrox AI"},
+                json={
+                    "model":VISION_MODEL,
+                    "messages":[
+                        {"role":"system","content":sys_prompt},
+                        {"role":"user","content":[
+                            {"type":"image_url","image_url":{"url":f"data:image/png;base64,{img_b64}"}},
+                            {"type":"text","text":msg or "Describe my screen in detail."}
+                        ]}
+                    ],
+                    "max_tokens":1024,
+                }
+            )
             if r.status_code == 200:
-                data = r.json()
-                content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                if content:
-                    return content
-                # empty response — try next model
-                last_err = f"{vision_model}: empty response"
-                continue
-            elif r.status_code in (404, 400, 422):
-                # Model not found or bad request — skip silently
-                last_err = f"{vision_model}: HTTP {r.status_code}"
-                continue
-            elif r.status_code == 429:
-                last_err = f"{vision_model}: rate limited"
-                continue
-            else:
-                last_err = f"{vision_model}: HTTP {r.status_code}"
-                continue
-        except Exception as e:
-            last_err = f"{vision_model}: {e}"
-            continue
-    return f"⚠ Vision unavailable — {last_err}"
+                return r.json()["choices"][0]["message"]["content"]
+            return f"Vision error {r.status_code}"
+    except Exception as e:
+        return f"Vision error: {e}"
 
 # ── Auto-memory extraction ────────────────────────────────────────────────
 MEMORY_PATTERNS = [
@@ -370,8 +316,7 @@ MEMORY_PATTERNS = [
     (r"i(?:'m| am)\s+(?:a\s+)?(?:developer|programmer|designer|student|engineer|gamer|streamer|artist)", "User is a {}"),
     (r"my\s+(?:favorite|fav)\s+\w+\s+is\s+([^,.!?\n]{2,30})", "User's favorite: {}"),
 ]
-
-def extract_facts(text: str) -> list[str]:
+def extract_facts(text:str) -> list[str]:
     facts = []
     for pat, tmpl in MEMORY_PATTERNS:
         m = re.search(pat, text.lower())
@@ -405,7 +350,6 @@ class SettingsIn(BaseModel):
     system_prompt:      Optional[str]  = None
     wakeword:           Optional[str]  = None
     tts:                Optional[bool] = None
-    tts_voice:          Optional[str]  = None
     socials:            Optional[dict] = None
     apps:               Optional[dict] = None
     context_files:      Optional[list] = None
@@ -419,6 +363,7 @@ async def post_settings(body: SettingsIn):
             s[k] = {**s.get(k,{}),**v}
         else:
             s[k] = v
+    # re-scan context files if paths changed
     if "context_files" in update:
         s["context_text"] = scan_context_files(s.get("context_files",[]))
     save_settings(s)
@@ -435,20 +380,20 @@ async def get_users():
     return list_users()
 
 @app.get("/api/history/{uid}")
-async def get_history(uid: str):
+async def get_history(uid:str):
     return load_history(uid)
 
 @app.delete("/api/history/{uid}")
-async def del_history(uid: str):
+async def del_history(uid:str):
     save_history(uid,[])
     return {"ok":True}
 
 @app.get("/api/memory/{uid}")
-async def get_memory(uid: str):
+async def get_memory(uid:str):
     return load_memory(uid)
 
 @app.post("/api/memory/{uid}")
-async def post_memory(uid: str, req: Request):
+async def post_memory(uid:str, req:Request):
     body = await req.json()
     m = load_memory(uid)
     if "facts"       in body: m["facts"]       = body["facts"]
@@ -472,7 +417,7 @@ async def get_status():
             "model":FREE_MODELS[idx%len(FREE_MODELS)],"has_key":has_key}
 
 @app.post("/api/scan-context")
-async def scan_context(req: Request):
+async def scan_context(req:Request):
     body = await req.json()
     paths = body.get("paths",[])
     text = scan_context_files(paths)
@@ -484,12 +429,13 @@ async def scan_context(req: Request):
 
 # ── WebSocket chat ─────────────────────────────────────────────────────────
 @app.websocket("/ws/chat/{uid}")
-async def chat_ws(ws: WebSocket, uid: str):
+async def chat_ws(ws:WebSocket, uid:str):
     await ws.accept()
 
     history  = load_history(uid)
     settings = load_settings()
 
+    # Send model info on connect
     idx = settings.get("current_model_index",0)
     await ws.send_text(json.dumps({"type":"model_info","model":FREE_MODELS[idx%len(FREE_MODELS)]}))
 
@@ -521,6 +467,7 @@ async def chat_ws(ws: WebSocket, uid: str):
             if not user_msg:
                 continue
 
+            # Auto-extract memory facts
             new_facts = extract_facts(user_msg)
             changed = False
             for f in new_facts:
@@ -533,7 +480,8 @@ async def chat_ws(ws: WebSocket, uid: str):
 
             history.append({"role":"user","content":user_msg})
 
-            mem_ctx  = memory_summary(memory)
+            # Build system prompt
+            mem_ctx = memory_summary(memory)
             ctx_text = settings.get("context_text","")
             sys_prompt = settings["system_prompt"]
             if ctx_text:
@@ -544,7 +492,7 @@ async def chat_ws(ws: WebSocket, uid: str):
             # ── Vision shortcut ──────────────────────────────────────────
             api_key = settings.get("openrouter_key","").strip()
             if (api_key and settings.get("backend","openrouter") == "openrouter"
-                    and await is_screen_request(user_msg)):
+                    and await is_screen_request(user_msg, api_key)):
                 await ws.send_text(json.dumps({"type":"token","content":"📸 Capturing screen…\n\n"}))
                 img = take_screenshot()
                 if img is None:
@@ -553,8 +501,8 @@ async def chat_ws(ws: WebSocket, uid: str):
                     history.append({"role":"assistant","content":err})
                     save_history(uid,history)
                     continue
-                await ws.send_text(json.dumps({"type":"model_info","model":"vision"}))
-                resp = await call_vision(api_key, img, user_msg, sys_prompt)
+                await ws.send_text(json.dumps({"type":"model_info","model":VISION_MODEL}))
+                resp = await call_vision(api_key,img,user_msg,sys_prompt)
                 history.append({"role":"assistant","content":resp})
                 save_history(uid,history)
                 await ws.send_text(json.dumps({"type":"done","content":resp}))
@@ -644,11 +592,11 @@ async def chat_ws(ws: WebSocket, uid: str):
                 except: pass
             display = action_pattern.sub("",clean).strip()
 
-            # Handle read_file inline (inject file content back into context)
+            # Handle read_file inline
             for act in list(actions_found):
                 if act.get("type") == "read_file":
-                    res = execute_pc_action(act, settings)
-                    await ws.send_text(json.dumps({"type":"actions","actions":[act],"results":{act.get("type"):res}}))
+                    res = execute_pc_action(act,settings)
+                    await ws.send_text(json.dumps({"type":"actions","actions":[act]}))
                     if res.get("ok") and res.get("content"):
                         history.append({"role":"assistant","content":display})
                         history.append({"role":"user","content":f"[File: {act.get('path')}]\n{res['content']}"})
@@ -659,16 +607,8 @@ async def chat_ws(ws: WebSocket, uid: str):
             else:
                 history.append({"role":"assistant","content":display})
                 save_history(uid,history)
-
-                # Execute all non-read actions and collect results
                 if actions_found:
-                    results = {}
-                    for act in actions_found:
-                        if act.get("type") != "send_socials":
-                            res = execute_pc_action(act, settings)
-                            results[act.get("type","")] = res
-                    await ws.send_text(json.dumps({"type":"actions","actions":actions_found,"results":results}))
-
+                    await ws.send_text(json.dumps({"type":"actions","actions":actions_found}))
                 await ws.send_text(json.dumps({"type":"done","content":display}))
 
     except WebSocketDisconnect:
