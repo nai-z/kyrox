@@ -1,6 +1,9 @@
 import json
 import os
 import re
+import subprocess
+import platform
+import webbrowser
 from pathlib import Path
 
 import httpx
@@ -15,7 +18,7 @@ BASE_DIR = Path(__file__).parent.parent
 SETTINGS_FILE = BASE_DIR / "settings.json"
 HISTORY_FILE  = BASE_DIR / "history.json"
 
-# ── Free models rotation list (best first) ────────────────────────────────
+# ── Free models rotation list ─────────────────────────────────────────────
 FREE_MODELS = [
     "deepseek/deepseek-r1:free",
     "deepseek/deepseek-v3:free",
@@ -26,27 +29,53 @@ FREE_MODELS = [
     "google/gemma-3-12b-it:free",
     "mistralai/mistral-small:free",
     "nvidia/llama-3.1-nemotron-ultra-253b-v1:free",
-    "openrouter/auto",   # fallback: OpenRouter picks best available free model
+    "openrouter/auto",
 ]
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # ── Default settings ───────────────────────────────────────────────────────
 DEFAULT_SETTINGS = {
-    "backend": "openrouter",        # "openrouter" or "ollama"
+    "backend": "openrouter",
     "openrouter_key": "",
     "current_model_index": 0,
     "ollama_url": "http://localhost:11434",
     "ollama_model": "llama3",
     "system_prompt": (
-        "You are Kyrox, an intelligent AI companion. "
+        "You are Kyrox, an intelligent AI companion like JARVIS. "
         "You are helpful, concise, and friendly. "
-        "Always respond naturally as Kyrox."
+        "Always respond naturally as Kyrox. "
+        "When the user asks you to open an app or website, reply with a JSON action block in this exact format on its own line: "
+        "```action\n{\"type\":\"open\",\"target\":\"app_or_url\",\"label\":\"human readable name\"}\n``` "
+        "When asked to send socials or share links, reply with a JSON action block: "
+        "```action\n{\"type\":\"send_socials\"}\n``` "
+        "For code, always wrap it in triple backticks with the language name. "
+        "Never say 'smiling face emoji' or read out emoji names — just skip them in speech."
     ),
     "tts_voice": "en-US-GuyNeural",
     "wakeword": "hey kyrox",
     "show_thinking": True,
     "tts": True,
+    "socials": {
+        "twitch": "",
+        "twitter": "",
+        "instagram": "",
+        "youtube": "",
+        "discord": "",
+        "github": "",
+    },
+    "apps": {
+        "csgo": "steam://rungameid/730",
+        "steam": "steam://open/main",
+        "spotify": "spotify:",
+        "discord": "discord:",
+        "chrome": "chrome",
+        "firefox": "firefox",
+        "vscode": "code",
+        "notepad": "notepad",
+        "calculator": "calc",
+        "explorer": "explorer",
+    }
 }
 
 
@@ -54,7 +83,11 @@ def load_settings() -> dict:
     if SETTINGS_FILE.exists():
         with open(SETTINGS_FILE) as f:
             data = json.load(f)
-        return {**DEFAULT_SETTINGS, **data}
+        merged = {**DEFAULT_SETTINGS, **data}
+        # Deep merge nested dicts
+        for key in ["socials", "apps"]:
+            merged[key] = {**DEFAULT_SETTINGS[key], **data.get(key, {})}
+        return merged
     return DEFAULT_SETTINGS.copy()
 
 
@@ -73,6 +106,75 @@ def load_history() -> list:
 def save_history(history: list):
     with open(HISTORY_FILE, "w") as f:
         json.dump(history[-100:], f, indent=2)
+
+
+def execute_pc_action(action: dict, settings: dict) -> dict:
+    """Execute a PC action — open app, URL, etc."""
+    action_type = action.get("type")
+    target = action.get("target", "")
+    os_name = platform.system()
+
+    if action_type == "open":
+        try:
+            # Check if it's a URL
+            if target.startswith("http://") or target.startswith("https://"):
+                webbrowser.open(target)
+                return {"ok": True, "message": f"Opened {target} in browser"}
+
+            # Check if it's a protocol URL (steam://, spotify:, discord:, etc.)
+            if "://" in target or target.endswith(":"):
+                if os_name == "Windows":
+                    os.startfile(target)
+                else:
+                    subprocess.Popen(["xdg-open", target])
+                return {"ok": True, "message": f"Launched {target}"}
+
+            # Check app registry in settings
+            app_registry = settings.get("apps", {})
+            target_lower = target.lower()
+            for app_name, app_cmd in app_registry.items():
+                if app_name in target_lower or target_lower in app_name:
+                    if app_cmd.startswith("http") or "://" in app_cmd:
+                        webbrowser.open(app_cmd)
+                    elif os_name == "Windows":
+                        os.startfile(app_cmd) if os.path.exists(app_cmd) else subprocess.Popen(app_cmd, shell=True)
+                    else:
+                        subprocess.Popen([app_cmd], shell=True)
+                    return {"ok": True, "message": f"Launched {app_name}"}
+
+            # Generic app launch
+            if os_name == "Windows":
+                subprocess.Popen(target, shell=True)
+            elif os_name == "Darwin":
+                subprocess.Popen(["open", "-a", target])
+            else:
+                subprocess.Popen([target])
+            return {"ok": True, "message": f"Launched {target}"}
+
+        except Exception as e:
+            return {"ok": False, "message": f"Could not open {target}: {str(e)}"}
+
+    elif action_type == "send_socials":
+        socials = settings.get("socials", {})
+        filled = {k: v for k, v in socials.items() if v.strip()}
+        if not filled:
+            return {"ok": False, "message": "No socials configured. Add them in Settings!"}
+        lines = [f"**{k.capitalize()}**: {v}" for k, v in filled.items()]
+        return {"ok": True, "message": "\n".join(lines), "display": True}
+
+    elif action_type == "search":
+        query = action.get("query", target)
+        engine = action.get("engine", "google")
+        if engine == "wikipedia":
+            url = f"https://en.wikipedia.org/wiki/Special:Search?search={query.replace(' ', '+')}"
+        elif engine == "youtube":
+            url = f"https://www.youtube.com/results?search_query={query.replace(' ', '+')}"
+        else:
+            url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
+        webbrowser.open(url)
+        return {"ok": True, "message": f"Searched '{query}' on {engine}"}
+
+    return {"ok": False, "message": "Unknown action"}
 
 
 # ── App ────────────────────────────────────────────────────────────────────
@@ -101,6 +203,12 @@ class SettingsUpdate(BaseModel):
     wakeword: str | None = None
     show_thinking: bool | None = None
     tts: bool | None = None
+    socials: dict | None = None
+    apps: dict | None = None
+
+
+class PCActionRequest(BaseModel):
+    action: dict
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────
@@ -121,10 +229,21 @@ async def get_settings():
 @app.post("/api/settings")
 async def update_settings(body: SettingsUpdate):
     settings = load_settings()
-    for field, value in body.model_dump(exclude_none=True).items():
-        settings[field] = value
+    update = body.model_dump(exclude_none=True)
+    for field, value in update.items():
+        if field in ["socials", "apps"] and isinstance(value, dict):
+            settings[field] = {**settings.get(field, {}), **value}
+        else:
+            settings[field] = value
     save_settings(settings)
     return {"ok": True, "settings": settings}
+
+
+@app.post("/api/action")
+async def run_action(body: PCActionRequest):
+    settings = load_settings()
+    result = execute_pc_action(body.action, settings)
+    return result
 
 
 @app.get("/api/history")
@@ -177,6 +296,13 @@ async def chat_ws(ws: WebSocket):
                 history = []
                 save_history(history)
                 await ws.send_text(json.dumps({"type": "cleared"}))
+                continue
+
+            # PC action executed from frontend
+            if action == "pc_action":
+                pc_action = payload.get("pc_action", {})
+                result = execute_pc_action(pc_action, settings)
+                await ws.send_text(json.dumps({"type": "action_result", "result": result}))
                 continue
 
             user_msg = payload.get("message", "").strip()
@@ -232,7 +358,6 @@ async def chat_ws(ws: WebSocket):
                                 },
                             ) as response:
                                 if response.status_code == 429:
-                                    # Rate limited — try next model
                                     await ws.send_text(json.dumps({
                                         "type": "model_switch",
                                         "reason": "rate_limit",
@@ -269,7 +394,6 @@ async def chat_ws(ws: WebSocket):
                                             "content": token,
                                         }))
 
-                                # Save current model index so next msg starts here
                                 settings["current_model_index"] = idx % len(FREE_MODELS)
                                 save_settings(settings)
                                 success = True
@@ -282,7 +406,7 @@ async def chat_ws(ws: WebSocket):
                 if not success:
                     await ws.send_text(json.dumps({
                         "type": "error",
-                        "content": "Tous les modèles gratuits sont en limite. Réessaie dans quelques minutes.",
+                        "content": "All free models are rate-limited. Try again in a few minutes.",
                     }))
                     history.pop()
                     continue
@@ -323,16 +447,37 @@ async def chat_ws(ws: WebSocket):
                     history.pop()
                     continue
 
+            # Strip <think> blocks
             clean_response = re.sub(
                 r"<think>.*?</think>", "", full_response, flags=re.DOTALL
             ).strip()
 
-            history.append({"role": "assistant", "content": clean_response})
+            # Parse action blocks from response
+            actions_found = []
+            action_pattern = re.compile(r"```action\s*(.*?)\s*```", re.DOTALL)
+            for match in action_pattern.finditer(clean_response):
+                try:
+                    action_obj = json.loads(match.group(1))
+                    actions_found.append(action_obj)
+                except Exception:
+                    pass
+
+            # Remove action blocks from display text
+            display_response = action_pattern.sub("", clean_response).strip()
+
+            history.append({"role": "assistant", "content": display_response})
             save_history(history)
+
+            # Send actions to frontend for execution
+            if actions_found:
+                await ws.send_text(json.dumps({
+                    "type": "actions",
+                    "actions": actions_found,
+                }))
 
             await ws.send_text(json.dumps({
                 "type": "done",
-                "content": clean_response,
+                "content": display_response,
             }))
 
     except WebSocketDisconnect:
