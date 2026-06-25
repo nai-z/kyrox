@@ -8,10 +8,10 @@ $RawUrl = "https://raw.githubusercontent.com/nai-z/kyrox/main"
 $InstallDir = "$env:LOCALAPPDATA\Kyrox"
 
 # ── Colours ────────────────────────────────────────────────────────────────
-function Write-Step($msg)  { Write-Host "  → $msg" -ForegroundColor Cyan }
-function Write-Ok($msg)    { Write-Host "  ✓ $msg" -ForegroundColor Green }
-function Write-Warn($msg)  { Write-Host "  ⚠ $msg" -ForegroundColor Yellow }
-function Write-Err($msg)   { Write-Host "  ✗ $msg" -ForegroundColor Red }
+function Write-Step($msg)  { Write-Host "  -> $msg" -ForegroundColor Cyan }
+function Write-Ok($msg)    { Write-Host "  v $msg" -ForegroundColor Green }
+function Write-Warn($msg)  { Write-Host "  ! $msg" -ForegroundColor Yellow }
+function Write-Err($msg)   { Write-Host "  x $msg" -ForegroundColor Red }
 
 function Write-Banner {
   Write-Host ""
@@ -44,7 +44,6 @@ function Ensure-Python {
   Write-Step "Python 3.10+ not found. Installing via winget..."
   try {
     winget install -e --id Python.Python.3.11 --accept-source-agreements --accept-package-agreements --silent
-    # Refresh PATH
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
     Write-Ok "Python installed"
   } catch {
@@ -58,7 +57,7 @@ function Ensure-Python {
 function Check-Ollama {
   Write-Step "Checking Ollama..."
   try {
-    $response = Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -UseBasicParsing -TimeoutSec 3
+    Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -UseBasicParsing -TimeoutSec 3 | Out-Null
     Write-Ok "Ollama is running"
     return $true
   } catch {
@@ -79,9 +78,9 @@ function Download-Kyrox {
   New-Item -ItemType Directory -Force -Path "$InstallDir\plugins" | Out-Null
 
   $files = @(
-    @{ remote = "core/main.py";       local = "core\main.py" },
+    @{ remote = "core/main.py";         local = "core\main.py" },
     @{ remote = "templates/index.html"; local = "templates\index.html" },
-    @{ remote = "requirements.txt";   local = "requirements.txt" }
+    @{ remote = "requirements.txt";     local = "requirements.txt" }
   )
 
   foreach ($f in $files) {
@@ -114,37 +113,33 @@ function Create-Launcher {
   $launcherDir = "$env:LOCALAPPDATA\Programs\Kyrox"
   New-Item -ItemType Directory -Force -Path $launcherDir | Out-Null
 
+  # .cmd lance sur le port 80 (admin requis) et ouvre /kyrox
   $cmd = @"
 @echo off
 echo.
-echo   ✦ Starting Kyrox...
-echo   ✦ Open in browser: http://127.0.0.1:8000
-echo   ✦ From your phone: http://%COMPUTERNAME%:8000
-echo   ✦ Press Ctrl+C to stop
+echo   Starting Kyrox...
+echo   Open in browser: http://127.0.0.1/kyrox
+echo   From your phone: http://%COMPUTERNAME%/kyrox
+echo   Press Ctrl+C to stop
 echo.
-python -m uvicorn core.main:app --host 0.0.0.0 --port 8000 --reload
+cd /d "$InstallDir"
+python -m uvicorn core.main:app --host 0.0.0.0 --port 80
 "@
-  $cmdPath = "$launcherDir\kyrox.cmd"
-  Set-Content -Path $cmdPath -Value $cmd -Encoding ASCII
+  Set-Content -Path "$launcherDir\kyrox.cmd" -Value $cmd -Encoding ASCII
 
-  # Also create a .ps1 version
   $ps1 = @"
 Set-Location "$InstallDir"
-Write-Host "`n  ✦ Starting Kyrox..." -ForegroundColor Magenta
-Write-Host "  ✦ Open in browser: http://127.0.0.1:8000" -ForegroundColor Cyan
-Write-Host "  ✦ From your phone (same WiFi): http://`$(hostname):8000" -ForegroundColor Cyan
-Write-Host "  ✦ Press Ctrl+C to stop`n" -ForegroundColor DarkGray
-Set-Location "$InstallDir"
-python -m uvicorn core.main:app --host 0.0.0.0 --port 8000
+Write-Host "`n  Starting Kyrox..." -ForegroundColor Magenta
+Write-Host "  Open in browser: http://127.0.0.1/kyrox" -ForegroundColor Cyan
+Write-Host "  From your phone (same WiFi): http://`$(hostname)/kyrox" -ForegroundColor Cyan
+Write-Host "  Press Ctrl+C to stop`n" -ForegroundColor DarkGray
+python -m uvicorn core.main:app --host 0.0.0.0 --port 80
 "@
   Set-Content -Path "$launcherDir\kyrox.ps1" -Value $ps1 -Encoding UTF8
 
-  # Add to user PATH if not already there
   $userPath = [System.Environment]::GetEnvironmentVariable("Path","User")
   if ($userPath -notlike "*$launcherDir*") {
-    [System.Environment]::SetEnvironmentVariable(
-      "Path", "$userPath;$launcherDir", "User"
-    )
+    [System.Environment]::SetEnvironmentVariable("Path", "$userPath;$launcherDir", "User")
     $env:Path += ";$launcherDir"
     Write-Ok "'kyrox' command added to PATH"
   } else {
@@ -178,20 +173,24 @@ function Launch-Kyrox {
   Write-Ok "Kyrox is installed!"
   Write-Host ""
   Write-Host "  Next steps:" -ForegroundColor White
-  Write-Host "  1. Open a new terminal and run: kyrox" -ForegroundColor Cyan
-  Write-Host "  2. Visit http://127.0.0.1:8000 in your browser" -ForegroundColor Cyan
-  Write-Host "  3. On Android (same WiFi): http://$(hostname):8000" -ForegroundColor Cyan
+  Write-Host "  1. Open an admin terminal and run: kyrox" -ForegroundColor Cyan
+  Write-Host "  2. Visit http://127.0.0.1/kyrox in your browser" -ForegroundColor Cyan
+  Write-Host "  3. On Android (same WiFi): http://$(hostname)/kyrox" -ForegroundColor Cyan
   Write-Host ""
   Write-Host "  Make sure Ollama is running with a model:" -ForegroundColor White
   Write-Host "  ollama pull llama3 && ollama serve" -ForegroundColor DarkGray
   Write-Host "  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor DarkGray
   Write-Host ""
+  Write-Host "  NOTE: Port 80 requires admin rights." -ForegroundColor Yellow
+  Write-Host "  Right-click the desktop shortcut and run as Administrator." -ForegroundColor Yellow
+  Write-Host ""
 
   $launch = Read-Host "  Launch Kyrox now? (y/n)"
   if ($launch -eq "y" -or $launch -eq "Y") {
     Set-Location $InstallDir
-    Start-Process "http://127.0.0.1:8000" -ErrorAction SilentlyContinue
-    python -m uvicorn core.main:app --host 0.0.0.0 --port 8000
+    Start-Sleep 1
+    Start-Process "http://127.0.0.1/kyrox" -ErrorAction SilentlyContinue
+    python -m uvicorn core.main:app --host 0.0.0.0 --port 80
   }
 }
 
