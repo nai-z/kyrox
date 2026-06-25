@@ -582,6 +582,8 @@ header{
     <div id="mode-tabs">
       <button class="tab active" data-tab="chat">💬 TEXT</button>
       <button class="tab" data-tab="voice">🎙 VOICE</button>
+      <button class="tab" data-tab="news">📰 NEWS</button>
+      <button class="btn-icon" id="btn-overlay" title="Screen overlay widget" style="margin-left:auto;margin-right:8px;margin-bottom:2px">🪟</button>
     </div>
 
     <!-- Chat tab -->
@@ -601,6 +603,17 @@ header{
             <span id="voice-status"></span>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- News tab -->
+    <div class="tab-content" id="tab-news">
+      <div id="news-view" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--border);background:var(--bg3)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <span style="font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--text2)">LATEST HEADLINES</span>
+          <button class="btn-icon" onclick="loadNews()" title="Refresh">↻</button>
+        </div>
+        <div id="news-list"><div style="font-family:var(--mono);font-size:11px;color:var(--text3);text-align:center;padding:40px">Click ↻ to load news…</div></div>
       </div>
     </div>
 
@@ -674,6 +687,18 @@ header{
           <label class="toggle"><input type="checkbox" id="s-tts" checked/><span class="tslider"></span></label>
         </div>
       </div>
+      <div class="sg">
+        <div class="sl">Voice Selection</div>
+        <select class="si si-sel" id="s-voice-name">
+          <option value="">Default (browser auto-select)</option>
+        </select>
+        <div class="sh">Choose a specific TTS voice. Options depend on your OS/browser.</div>
+      </div>
+      <div class="sg">
+        <div class="sl">Speech Rate</div>
+        <input class="si" id="s-voice-rate" type="range" min="0.5" max="2" step="0.05" value="1.05" style="padding:4px 0"/>
+        <div class="sh" id="voice-rate-label">Rate: 1.05×</div>
+      </div>
       <div class="sdiv"></div>
       <div class="stitle">CONTEXT FILES</div>
       <div class="sh" style="margin-bottom:8px">Kyrox reads these .md / .txt files at startup to understand your PC & projects.</div>
@@ -705,6 +730,49 @@ header{
 </div>
 
 <div id="toast"></div>
+
+<!-- ── Screen Overlay Widget ──────────────────────────────────────────── -->
+<div id="overlay-widget" style="
+  display:none;position:fixed;z-index:9000;
+  min-width:280px;max-width:400px;
+  background:rgba(7,6,15,0.93);
+  border:1px solid rgba(138,91,255,0.4);
+  border-radius:14px;backdrop-filter:blur(24px);
+  box-shadow:0 0 40px rgba(138,91,255,0.2);
+  font-family:'Space Grotesk',sans-serif;
+  overflow:hidden;resize:both;
+  top:80px;right:20px;
+">
+  <div id="overlay-drag" style="
+    display:flex;align-items:center;justify-content:space-between;
+    padding:8px 12px;cursor:move;
+    background:rgba(138,91,255,0.08);border-bottom:1px solid rgba(138,91,255,0.15);
+    user-select:none;
+  ">
+    <span style="font-family:'Syne',sans-serif;font-size:12px;font-weight:800;letter-spacing:3px;color:#8a5bff">KYROX LENS</span>
+    <div style="display:flex;gap:6px;align-items:center">
+      <button onclick="captureAndAsk()" style="background:rgba(138,91,255,0.2);border:1px solid rgba(138,91,255,0.4);color:#8a5bff;border-radius:6px;padding:3px 9px;font-size:11px;cursor:pointer;font-family:'Space Mono',monospace">👁 SCAN</button>
+      <button onclick="closeOverlay()" style="background:none;border:none;color:#8b82b8;cursor:pointer;font-size:16px;padding:0 2px">✕</button>
+    </div>
+  </div>
+  <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+    <textarea id="overlay-input" placeholder="Ask about your screen…" style="
+      background:rgba(138,91,255,0.05);border:1px solid rgba(138,91,255,0.2);
+      border-radius:8px;padding:8px 10px;color:#e2deff;font-size:13px;
+      font-family:'Space Grotesk',sans-serif;resize:none;height:60px;outline:none;width:100%;box-sizing:border-box;
+    "></textarea>
+    <button onclick="overlayAsk()" style="
+      background:rgba(138,91,255,0.15);border:1px solid rgba(138,91,255,0.35);
+      color:#8a5bff;border-radius:8px;padding:8px;font-size:12px;
+      font-family:'Syne',sans-serif;font-weight:800;letter-spacing:2px;cursor:pointer;
+    ">ASK KYROX</button>
+    <div id="overlay-response" style="
+      font-size:12px;color:#e2deff;line-height:1.6;min-height:40px;
+      background:rgba(0,0,0,0.3);border-radius:8px;padding:8px 10px;
+      font-family:'Space Grotesk',sans-serif;display:none;max-height:200px;overflow-y:auto;
+    "></div>
+  </div>
+</div>
 
 <script>
 'use strict';
@@ -1450,6 +1518,205 @@ function toast(msg,dur=2500) {
 }
 
 // ── Launch ────────────────────────────────────────────────────────────────
+
+// ── Voice selection ────────────────────────────────────────────────────────
+async function populateVoiceSelect() {
+  const sel = document.getElementById('s-voice-name');
+  if (!sel) return;
+  const load = () => {
+    const voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+    if (!voices.length) return;
+    while (sel.options.length > 1) sel.remove(1);
+    voices.forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v.name;
+      opt.textContent = v.name + ' (' + v.lang + ')';
+      sel.appendChild(opt);
+    });
+    if (settings.tts_voice) sel.value = settings.tts_voice;
+  };
+  load();
+  if (window.speechSynthesis) window.speechSynthesis.addEventListener('voiceschanged', load);
+}
+
+document.getElementById('s-voice-rate').addEventListener('input', function() {
+  document.getElementById('voice-rate-label').textContent = 'Rate: ' + parseFloat(this.value).toFixed(2) + 'x';
+});
+
+// Override speakText to use selected voice + rate
+function speakText(text) {
+  if (!window.speechSynthesis || settings.tts === false) return;
+  window.speechSynthesis.cancel();
+  let clean = text
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu,'')
+    .replace(/```[\s\S]*?```/g,'code block')
+    .replace(/`[^`]+`/g,'')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g,'$1')
+    .replace(/[*_~>#]/g,'')
+    .replace(/\s+/g,' ').trim();
+  if (!clean) return;
+  setSpeakState(true);
+  const selectedVoiceName = (settings.tts_voice || '');
+  const rateVal = parseFloat(settings.tts_rate || 1.05);
+  const chunks = clean.match(/.{1,250}(?:[.!?,\n]|$)/g)||[clean];
+  const speak = i => {
+    if (i >= chunks.length) { setSpeakState(false); return; }
+    const c = chunks[i].trim(); if (!c) { speak(i+1); return; }
+    const utt = new SpeechSynthesisUtterance(c);
+    utt.rate = rateVal; utt.pitch = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    let voice;
+    if (selectedVoiceName) voice = voices.find(v => v.name === selectedVoiceName);
+    if (!voice) {
+      voice = voices.find(v=>v.name.includes('Daniel')||v.name.includes('Guy')||v.name.includes('Alex'))
+              || voices.find(v=>v.lang.startsWith('en')&&!v.name.toLowerCase().includes('female'))
+              || voices[0];
+    }
+    if (voice) utt.voice = voice;
+    utt.onend = () => speak(i+1); utt.onerror = () => speak(i+1);
+    window.speechSynthesis.speak(utt);
+  };
+  speak(0);
+}
+
+// ── News tab ──────────────────────────────────────────────────────────────
+async function loadNews() {
+  const list = document.getElementById('news-list');
+  list.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text3);text-align:center;padding:40px">Loading...</div>';
+  try {
+    const r = await fetch('/api/news');
+    const data = await r.json();
+    const articles = data.articles || [];
+    if (!articles.length) {
+      list.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text3);text-align:center;padding:40px">No articles found.</div>';
+      return;
+    }
+    list.innerHTML = '';
+    articles.forEach(a => {
+      const d = document.createElement('div');
+      d.style.cssText = 'background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:4px;cursor:pointer;transition:border-color .2s';
+      d.onmouseenter = () => d.style.borderColor = 'rgba(138,91,255,0.4)';
+      d.onmouseleave = () => d.style.borderColor = 'rgba(138,91,255,0.08)';
+      const pubDate = a.pub ? new Date(a.pub).toLocaleString() : '';
+      d.innerHTML =
+        '<div style="font-size:13px;color:var(--text);font-weight:500;line-height:1.4">' + esc(a.title) + '</div>' +
+        '<div style="display:flex;gap:8px;align-items:center">' +
+          '<span style="font-family:var(--mono);font-size:9px;color:var(--v);background:var(--v-dim);padding:2px 7px;border-radius:10px">' + esc(a.source) + '</span>' +
+          '<span style="font-family:var(--mono);font-size:9px;color:var(--text3)">' + pubDate + '</span>' +
+        '</div>';
+      d.onclick = () => {
+        if (a.link) window.open(a.link, '_blank');
+        else sendChip('Tell me more about: ' + a.title);
+      };
+      list.appendChild(d);
+    });
+  } catch(e) {
+    list.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--danger);text-align:center;padding:40px">Error: ' + esc(e.message) + '</div>';
+  }
+}
+
+// Auto-load news when tab is activated
+const _origActivateTab = activateTab;
+function activateTab(name) {
+  _origActivateTab(name);
+  if (name === 'news') {
+    const list = document.getElementById('news-list');
+    if (list && list.children.length <= 1) loadNews();
+  }
+}
+
+// ── Overlay Widget ────────────────────────────────────────────────────────
+let overlayDragging = false, overlayOffX = 0, overlayOffY = 0;
+
+document.getElementById('btn-overlay').addEventListener('click', () => {
+  const w = document.getElementById('overlay-widget');
+  w.style.display = (w.style.display === 'none' || !w.style.display) ? 'block' : 'none';
+});
+
+function closeOverlay() {
+  document.getElementById('overlay-widget').style.display = 'none';
+}
+
+const dragHandle = document.getElementById('overlay-drag');
+dragHandle.addEventListener('mousedown', e => {
+  overlayDragging = true;
+  const rect = document.getElementById('overlay-widget').getBoundingClientRect();
+  overlayOffX = e.clientX - rect.left;
+  overlayOffY = e.clientY - rect.top;
+  e.preventDefault();
+});
+document.addEventListener('mousemove', e => {
+  if (!overlayDragging) return;
+  const w = document.getElementById('overlay-widget');
+  w.style.left = (e.clientX - overlayOffX) + 'px';
+  w.style.top  = (e.clientY - overlayOffY) + 'px';
+  w.style.right = 'auto';
+});
+document.addEventListener('mouseup', () => { overlayDragging = false; });
+
+function overlayAsk() {
+  const input = document.getElementById('overlay-input');
+  const q = input.value.trim();
+  if (!q) return;
+  const respEl = document.getElementById('overlay-response');
+  respEl.style.display = 'block';
+  respEl.textContent = 'Thinking...';
+  window._overlayPending = true;
+  const screenQ = (q.toLowerCase().includes('screen') || q.toLowerCase().includes('ecran'))
+    ? q : 'Look at my screen: ' + q;
+  sendMessage(screenQ);
+  activateTab('chat');
+}
+
+function captureAndAsk() {
+  const input = document.getElementById('overlay-input');
+  const q = input.value.trim() || 'Describe everything visible on my screen.';
+  const respEl = document.getElementById('overlay-response');
+  respEl.style.display = 'block';
+  respEl.textContent = 'Scanning screen...';
+  window._overlayPending = true;
+  sendMessage(q.toLowerCase().includes('screen') ? q : 'Look at my screen and ' + q);
+  activateTab('chat');
+}
+
+// Patch finalizeDone to update overlay response
+const _origFinalize = finalizeDone;
+function finalizeDone(clean) {
+  _origFinalize(clean);
+  if (window._overlayPending) {
+    const respEl = document.getElementById('overlay-response');
+    if (respEl) {
+      respEl.style.display = 'block';
+      respEl.textContent = clean.slice(0, 600) + (clean.length > 600 ? '...' : '');
+    }
+    window._overlayPending = false;
+  }
+}
+
+// ── Voice settings persistence ──────────────────────────────────────────
+const _origLoadSettingsPanel = loadSettingsIntoPanel;
+function loadSettingsIntoPanel(s) {
+  _origLoadSettingsPanel(s);
+  const voiceSel = document.getElementById('s-voice-name');
+  const rateEl   = document.getElementById('s-voice-rate');
+  if (voiceSel && s.tts_voice) voiceSel.value = s.tts_voice;
+  if (rateEl && s.tts_rate) {
+    rateEl.value = s.tts_rate;
+    document.getElementById('voice-rate-label').textContent = 'Rate: ' + parseFloat(s.tts_rate).toFixed(2) + 'x';
+  }
+}
+
+const _origSaveSettings = saveSettings;
+async function saveSettings() {
+  const voiceSel = document.getElementById('s-voice-name');
+  const rateEl   = document.getElementById('s-voice-rate');
+  if (voiceSel) settings.tts_voice = voiceSel.value;
+  if (rateEl)   settings.tts_rate  = parseFloat(rateEl.value);
+  await _origSaveSettings();
+}
+
+setTimeout(populateVoiceSelect, 800);
+
 init();
 </script>
 </body>
