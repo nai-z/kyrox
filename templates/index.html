@@ -1186,6 +1186,8 @@ async function loadHistory() {
 
 // ── Markdown ───────────────────────────────────────────────────────────────
 function renderMarkdown(text) {
+  // Strip action blocks — should already be removed by backend, but catch any that slip through
+  text = text.replace(/```action[\s\S]*?```/g, '');
   text = text.replace(/```(\w+)?\n?([\s\S]*?)```/g, (_, lang, code) => {
     const l = lang||'text';
     const hi = hljs.getLanguage(l) ? hljs.highlight(code.trim(),{language:l}).value : hljs.highlightAuto(code.trim()).value;
