@@ -17,7 +17,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # ── Paths ──────────────────────────────────────────────────────────────────
-BASE_DIR      = Path(__file__).parent.parent
+# Script lives at /kyrox/main.py  →  BASE_DIR = /kyrox
+BASE_DIR      = Path(__file__).parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR    = BASE_DIR / "static"
 DATA_DIR      = BASE_DIR / "data"
@@ -286,20 +287,29 @@ def execute_pc_action(action: dict, settings: dict) -> dict:
     os_name = platform.system()
 
     if atype == "open":
+        def _launch(cmd_or_url: str):
+            """Open a URL, protocol URI, or executable on any OS."""
+            if os_name == "Windows":
+                # Use PowerShell Start-Process — handles URLs, protocol URIs, .exe, app names
+                subprocess.Popen(
+                    ["powershell", "-WindowStyle", "Hidden", "-Command",
+                     f"Start-Process '{cmd_or_url}'"],
+                    creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
+                )
+            elif os_name == "Darwin":
+                subprocess.Popen(["open", cmd_or_url])
+            else:
+                subprocess.Popen(["xdg-open", cmd_or_url])
+
         try:
             # 1. Direct URL → open in browser
             if target.startswith(("http://", "https://")):
-                webbrowser.open(target)
+                _launch(target)
                 return {"ok": True, "message": f"Opened {target}"}
 
             # 2. Protocol URI (steam://, spotify:, discord:, etc.)
             if "://" in target or (target.endswith(":") and len(target) > 2):
-                if os_name == "Windows":
-                    os.startfile(target)
-                elif os_name == "Darwin":
-                    subprocess.Popen(["open", target])
-                else:
-                    subprocess.Popen(["xdg-open", target])
+                _launch(target)
                 return {"ok": True, "message": f"Launched {target}"}
 
             # 3. Check registered apps dict (fuzzy match)
@@ -307,47 +317,41 @@ def execute_pc_action(action: dict, settings: dict) -> dict:
             tl = target.lower()
             for name, cmd in reg.items():
                 if name in tl or tl in name:
-                    # cmd could be URL, protocol URI, or executable name
-                    if cmd.startswith("http") or "://" in cmd or cmd.endswith(":"):
-                        if os_name == "Windows":
-                            os.startfile(cmd)
-                        elif os_name == "Darwin":
-                            subprocess.Popen(["open", cmd])
-                        else:
-                            subprocess.Popen(["xdg-open", cmd])
-                    elif os_name == "Windows":
-                        if os.path.exists(cmd):
-                            os.startfile(cmd)
-                        else:
-                            subprocess.Popen(cmd, shell=True)
-                    elif os_name == "Darwin":
-                        subprocess.Popen(["open", "-a", cmd])
-                    else:
-                        subprocess.Popen([cmd], shell=True)
+                    _launch(cmd)
                     return {"ok": True, "message": f"Launched {name}"}
 
-            # 4. Looks like a website name (e.g. "youtube", "github.com", "netflix")
-            # Add https:// if it looks like a domain
-            domain_like = (
-                "." in target
-                or target.lower() in [
-                    "youtube", "google", "facebook", "twitter", "instagram",
-                    "github", "netflix", "twitch", "reddit", "discord",
-                    "spotify", "amazon", "wikipedia", "stackoverflow",
-                ]
-            )
-            if domain_like:
-                url = target if target.startswith("http") else f"https://{target.rstrip('/')}.com" if "." not in target else f"https://{target}"
-                webbrowser.open(url)
-                return {"ok": True, "message": f"Opened {url} in browser"}
+            # 4. Known website names → open in browser
+            KNOWN_SITES = {
+                "youtube": "https://youtube.com",
+                "google": "https://google.com",
+                "facebook": "https://facebook.com",
+                "twitter": "https://twitter.com",
+                "instagram": "https://instagram.com",
+                "github": "https://github.com",
+                "netflix": "https://netflix.com",
+                "twitch": "https://twitch.tv",
+                "reddit": "https://reddit.com",
+                "discord": "https://discord.com",
+                "spotify": "https://open.spotify.com",
+                "amazon": "https://amazon.com",
+                "wikipedia": "https://wikipedia.org",
+                "stackoverflow": "https://stackoverflow.com",
+                "chatgpt": "https://chat.openai.com",
+                "claude": "https://claude.ai",
+            }
+            tl_clean = tl.strip().lower()
+            if tl_clean in KNOWN_SITES:
+                _launch(KNOWN_SITES[tl_clean])
+                return {"ok": True, "message": f"Opened {KNOWN_SITES[tl_clean]}"}
 
-            # 5. Try as executable / app name
-            if os_name == "Windows":
-                subprocess.Popen(target, shell=True)
-            elif os_name == "Darwin":
-                subprocess.Popen(["open", "-a", target])
-            else:
-                subprocess.Popen([target], shell=True)
+            # 5. Looks like a domain
+            if "." in target:
+                url = target if target.startswith("http") else f"https://{target}"
+                _launch(url)
+                return {"ok": True, "message": f"Opened {url}"}
+
+            # 6. Try as app name / executable
+            _launch(target)
             return {"ok": True, "message": f"Launched {target}"}
 
         except Exception as e:
@@ -664,20 +668,65 @@ async def get_voices():
     voices = []
     try:
         if os_name == "Windows":
-            import pyttsx3
-            engine = pyttsx3.init()
-            for v in engine.getProperty("voices"):
-                voices.append({"id": v.id, "name": v.name, "lang": getattr(v, "languages", [""])[0] if v.languages else ""})
-            engine.stop()
+            result = subprocess.run(
+                ["powershell", "-Command",
+                 "Add-Type -AssemblyName System.Speech; "
+                 "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+                 "$s.GetInstalledVoices() | ForEach-Object { $_.VoiceInfo.Name }"],
+                capture_output=True, text=True, timeout=10
+            )
+            for line in result.stdout.strip().splitlines():
+                name = line.strip()
+                if name:
+                    voices.append({"id": name, "name": name, "lang": "en"})
         elif os_name == "Darwin":
             result = subprocess.run(["say", "-v", "?"], capture_output=True, text=True)
             for line in result.stdout.splitlines():
                 parts = line.split()
                 if parts:
                     voices.append({"id": parts[0], "name": parts[0], "lang": parts[1] if len(parts) > 1 else ""})
+        elif os_name == "Linux":
+            try:
+                result = subprocess.run(["espeak", "--voices"], capture_output=True, text=True, timeout=5)
+                for line in result.stdout.splitlines()[1:]:
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        voices.append({"id": parts[3], "name": parts[3], "lang": parts[1]})
+            except Exception:
+                pass
     except Exception:
         pass
     return {"voices": voices}
+
+@app.get("/api/news")
+async def get_news():
+    """Fetch top headlines via RSS (no API key needed)."""
+    feeds = [
+        ("Google News FR", "https://news.google.com/rss?hl=fr&gl=FR&ceid=FR:fr"),
+        ("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml"),
+        ("Le Monde", "https://www.lemonde.fr/rss/une.xml"),
+    ]
+    articles = []
+    async with httpx.AsyncClient(timeout=10) as client:
+        for source, url in feeds:
+            try:
+                r = await client.get(url, headers={"User-Agent": "Kyrox/1.0"})
+                if r.status_code != 200:
+                    continue
+                items = re.findall(r"<item>(.*?)</item>", r.text, re.DOTALL)
+                for item in items[:5]:
+                    title = re.search(r"<title><!\[CDATA\[(.*?)\]\]></title>|<title>(.*?)</title>", item)
+                    link  = re.search(r"<link>(.*?)</link>|<guid[^>]*>(https?://[^<]+)</guid>", item)
+                    pub   = re.search(r"<pubDate>(.*?)</pubDate>", item)
+                    if title:
+                        t = (title.group(1) or title.group(2) or "").strip()
+                        l = (link.group(1) or (link.group(2) if link else "") or "").strip() if link else ""
+                        p = pub.group(1).strip() if pub else ""
+                        if t:
+                            articles.append({"title": t, "link": l, "pub": p, "source": source})
+            except Exception:
+                continue
+    return {"articles": articles[:20]}
 
 # ── WebSocket chat ─────────────────────────────────────────────────────────
 @app.websocket("/ws/chat/{uid}")
@@ -891,3 +940,56 @@ async def chat_ws(ws: WebSocket, uid: str):
 
     except WebSocketDisconnect:
         pass
+
+# ── Startup info endpoint ─────────────────────────────────────────────────
+@app.get("/api/startup-info")
+async def startup_info():
+    """Return instructions to auto-launch Kyrox at startup."""
+    os_name = platform.system()
+    script_path = str(Path(__file__).resolve())
+    python_path = "python"  # assume python is on PATH
+
+    if os_name == "Windows":
+        # Create a .bat file in Startup folder
+        startup_folder = Path.home() / "AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup"
+        bat_path = startup_folder / "kyrox.bat"
+        bat_content = f'@echo off\nstart "" /B {python_path} -m uvicorn main:app --host 127.0.0.1 --port 8000 --app-dir "{Path(script_path).parent}"'
+        instructions = (
+            f"To auto-start Kyrox on Windows login:\n"
+            f"1. Create file: {bat_path}\n"
+            f"   Content:\n{bat_content}\n\n"
+            f"Or run this command (as admin) to install it automatically:"
+        )
+        auto_cmd = f'echo {bat_content} > "{bat_path}"'
+    elif os_name == "Darwin":
+        plist = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>uk.nemea.kyrox</string>
+  <key>ProgramArguments</key><array>
+    <string>{python_path}</string><string>-m</string><string>uvicorn</string>
+    <string>main:app</string><string>--host</string><string>127.0.0.1</string>
+    <string>--port</string><string>8000</string>
+    <string>--app-dir</string><string>{Path(script_path).parent}</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+</dict></plist>"""
+        plist_path = Path.home() / "Library/LaunchAgents/uk.nemea.kyrox.plist"
+        instructions = f"Save this plist to:\n{plist_path}\nThen run: launchctl load {plist_path}"
+        auto_cmd = f"echo '{plist}' > {plist_path} && launchctl load {plist_path}"
+    else:
+        service = f"""[Unit]
+Description=Kyrox AI
+After=network.target
+
+[Service]
+ExecStart={python_path} -m uvicorn main:app --host 127.0.0.1 --port 8000 --app-dir {Path(script_path).parent}
+Restart=always
+
+[Install]
+WantedBy=default.target"""
+        instructions = "Create a systemd user service or add to .bashrc / .profile"
+        auto_cmd = f"echo '{service}' > ~/.config/systemd/user/kyrox.service && systemctl --user enable kyrox && systemctl --user start kyrox"
+
+    return {"os": os_name, "instructions": instructions, "auto_cmd": auto_cmd, "script": script_path}
