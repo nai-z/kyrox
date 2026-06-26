@@ -4,7 +4,7 @@ FastAPI + WebSocket + OpenRouter/Ollama
 Multi-user, persistent memory, PC actions, screenshot vision, .md/.txt context reader
 """
 
-import json, os, re, subprocess, platform, webbrowser, tempfile, base64, io, hashlib
+import json, os, re, subprocess, platform, webbrowser, tempfile, base64, io, hashlib, time
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
@@ -17,14 +17,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # ── Paths ──────────────────────────────────────────────────────────────────
-# Structure:
-#   main/
-#     core/main.py   ← __file__
-#     templates/index.html
-BASE_DIR      = Path(__file__).parent.parent   # main/
-TEMPLATES_DIR = BASE_DIR / "templates"         # main/templates/
-STATIC_DIR    = BASE_DIR / "static"            # main/static/
-DATA_DIR      = BASE_DIR / "data"              # main/data/
+BASE_DIR      = Path(__file__).parent.parent
+TEMPLATES_DIR = BASE_DIR / "templates"
+STATIC_DIR    = BASE_DIR / "static"
+DATA_DIR      = BASE_DIR / "data"
 STATIC_DIR.mkdir(exist_ok=True)
 DATA_DIR.mkdir(exist_ok=True)
 SETTINGS_FILE = DATA_DIR / "settings.json"
@@ -52,7 +48,7 @@ VISION_MODELS = [
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-# ── Coding / creation skills injected dynamically ─────────────────────────
+# ── Skills ─────────────────────────────────────────────────────────────────
 SKILL_FRONTEND = """
 [SKILL: Frontend / HTML creation]
 When creating HTML pages, ALWAYS produce a complete, visually stunning result:
@@ -67,7 +63,6 @@ When creating HTML pages, ALWAYS produce a complete, visually stunning result:
 - For dashboards: sidebar nav, stat cards, charts (use Chart.js from cdnjs)
 - ALWAYS include meta viewport tag and charset
 - Inline all CSS and JS in a single .html file unless told otherwise
-Example quality bar: the output should look like a professional designer made it.
 """
 
 SKILL_PYTHON = """
@@ -80,7 +75,6 @@ When writing Python scripts:
 - For file operations: always use pathlib.Path
 - Add brief docstrings for functions
 - Print clear status messages so the user knows what's happening
-- Never write bare scripts with no output — always confirm success/failure
 """
 
 SKILL_FILE_OPS = """
@@ -89,31 +83,58 @@ When creating or writing files:
 - Always confirm the full path you're writing to
 - Use the write_file action with absolute or ~/relative paths
 - After writing, mention what was created and where
-- For projects (multiple files): create them one by one, announce each
-- If creating a folder structure: explain it clearly
 """
 
+# ── System prompt ──────────────────────────────────────────────────────────
 DEFAULT_SYSTEM_PROMPT = (
     "You are Kyrox, an elite AI companion inspired by JARVIS from Iron Man. "
     "You are sharp, confident, slightly witty, and deeply helpful. "
     "You remember everything about your user and use it naturally in conversation. "
     "Speak in short, punchy sentences unless a detailed answer is needed. "
     "Match the user's language — if they write in French, respond in French. "
-    "When asked to open an app or website, emit an action block:\n"
+    "\n\n"
+    "== ACTIONS ==\n"
+    "You can control the user's PC by emitting action blocks. "
+    "ALWAYS emit the correct action block when the user asks you to open an app, website, or send a message. "
+    "NEVER say you cannot open apps or send messages — always try via the action block.\n"
+    "\n"
+    "Open an app or website:\n"
     "```action\n{\"type\":\"open\",\"target\":\"app_or_url\",\"label\":\"name\"}\n```\n"
-    "When asked to search the web:\n"
+    "Examples:\n"
+    "  User: open discord  →  ```action\n{\"type\":\"open\",\"target\":\"discord:\",\"label\":\"Discord\"}\n```\n"
+    "  User: open spotify  →  ```action\n{\"type\":\"open\",\"target\":\"spotify:\",\"label\":\"Spotify\"}\n```\n"
+    "  User: open youtube  →  ```action\n{\"type\":\"open\",\"target\":\"https://youtube.com\",\"label\":\"YouTube\"}\n```\n"
+    "  User: open steam    →  ```action\n{\"type\":\"open\",\"target\":\"steam://open/main\",\"label\":\"Steam\"}\n```\n"
+    "  User: open chrome   →  ```action\n{\"type\":\"open\",\"target\":\"chrome\",\"label\":\"Chrome\"}\n```\n"
+    "\n"
+    "Send a message via an app:\n"
+    "```action\n{\"type\":\"send_message\",\"app\":\"discord\",\"recipient\":\"Username\",\"message\":\"message text here\"}\n```\n"
+    "Supported apps for send_message: discord, telegram, whatsapp, slack\n"
+    "Examples:\n"
+    "  User: send 'hey' to John on Discord  →  ```action\n{\"type\":\"send_message\",\"app\":\"discord\",\"recipient\":\"John\",\"message\":\"hey\"}\n```\n"
+    "  User: message Sarah on WhatsApp 'be there in 5'  →  ```action\n{\"type\":\"send_message\",\"app\":\"whatsapp\",\"recipient\":\"Sarah\",\"message\":\"be there in 5\"}\n```\n"
+    "\n"
+    "Search the web:\n"
     "```action\n{\"type\":\"search\",\"query\":\"...\"}\n```\n"
-    "When asked to run a script:\n"
+    "\n"
+    "Run a script:\n"
     "```action\n{\"type\":\"run_script\",\"lang\":\"python\",\"code\":\"...\"}\n```\n"
-    "When asked to read a file:\n"
+    "\n"
+    "Read a file:\n"
     "```action\n{\"type\":\"read_file\",\"path\":\"...\"}\n```\n"
-    "When asked to create/write/save a file:\n"
+    "\n"
+    "Write/create a file:\n"
     "```action\n{\"type\":\"write_file\",\"path\":\"path/to/file.ext\",\"content\":\"file content here\"}\n```\n"
-    "IMPORTANT: To create or save a file, ALWAYS use write_file action — never use run_script for file creation.\n"
-    "When asked to share socials / send links:\n"
+    "\n"
+    "Share socials:\n"
     "```action\n{\"type\":\"send_socials\"}\n```\n"
-    "Never explain action blocks to the user. Never say emoji names. "
-    "Keep code in triple-backtick blocks when displaying to user."
+    "\n"
+    "RULES:\n"
+    "- ALWAYS use the action block. Never say 'I can't open that' or 'I don't have access'.\n"
+    "- Never explain action blocks to the user.\n"
+    "- Never say emoji names.\n"
+    "- Keep code in triple-backtick blocks when displaying to user.\n"
+    "- IMPORTANT: To create or save a file, ALWAYS use write_file — never use run_script for file creation.\n"
 )
 
 DEFAULT_SETTINGS = {
@@ -198,20 +219,17 @@ def memory_summary(memory: dict) -> str:
     prefs = memory.get("preferences", {})
     if not facts and not prefs:
         return ""
-    lines = ["[KYROX MEMORY — ce que tu sais sur cet utilisateur:]"]
+    lines = ["[KYROX MEMORY — what you know about this user:]"]
     for f in facts[-40:]:
         lines.append(f"  • {f}")
     for k, v in prefs.items():
         lines.append(f"  • {k}: {v}")
     return "\n".join(lines)
 
-# ── Auto-scan home directory for user profile files ───────────────────────
+# ── Auto-scan home ─────────────────────────────────────────────────────────
 def auto_scan_user_profile() -> str:
-    """Scan common user profile files to auto-learn about the user."""
     home = Path.home()
     chunks = []
-
-    # Common profile/about files to check
     profile_candidates = [
         home / "about.md", home / "about.txt",
         home / "README.md", home / "profile.md",
@@ -225,8 +243,6 @@ def auto_scan_user_profile() -> str:
                 chunks.append(f"[Profile file: {p.name}]\n{p.read_text(errors='replace')[:3000]}")
             except Exception:
                 pass
-
-    # Scan Desktop for .md/.txt files (project notes, etc.)
     desktop = home / "Desktop"
     if desktop.exists():
         for f in list(desktop.glob("*.md"))[:5] + list(desktop.glob("*.txt"))[:5]:
@@ -234,10 +250,9 @@ def auto_scan_user_profile() -> str:
                 chunks.append(f"[Desktop/{f.name}]\n{f.read_text(errors='replace')[:1500]}")
             except Exception:
                 pass
-
     return "\n\n---\n\n".join(chunks)[:8000]
 
-# ── Context file reader ────────────────────────────────────────────────────
+# ── Context files ──────────────────────────────────────────────────────────
 def scan_context_files(paths: list[str]) -> str:
     chunks = []
     for raw in paths:
@@ -254,50 +269,130 @@ def scan_context_files(paths: list[str]) -> str:
                         chunks.append(f"[File: {f.name}]\n{f.read_text(errors='replace')[:2000]}")
                     except Exception:
                         pass
-    combined = "\n\n---\n\n".join(chunks)
-    return combined[:12000]
+    return "\n\n---\n\n".join(chunks)[:12000]
 
-# ── Skill injection based on message content ──────────────────────────────
+# ── Skill injection ────────────────────────────────────────────────────────
 def get_relevant_skills(message: str) -> str:
     msg_lower = message.lower()
     skills = []
-
-    # Frontend / HTML
     html_keywords = ["html", "page", "site", "website", "web", "css", "interface", "landing",
-                     "design", "jeu", "game", "dashboard", "card", "portfolio", "blog",
-                     "formulaire", "form", "animation", "bouton", "button"]
+                     "design", "game", "dashboard", "card", "portfolio", "blog", "form",
+                     "animation", "button"]
     if any(k in msg_lower for k in html_keywords):
         skills.append(SKILL_FRONTEND)
-
-    # Python
-    python_keywords = ["python", "script", "code", ".py", "automatise", "automate",
-                       "fichier", "file", "liste", "list", "calcul", "calculate"]
+    python_keywords = ["python", "script", "code", ".py", "automate", "file", "list", "calculate"]
     if any(k in msg_lower for k in python_keywords):
         skills.append(SKILL_PYTHON)
-
-    # File operations
-    file_keywords = ["crée", "créer", "create", "écris", "write", "sauvegarde", "save",
-                     "fichier", "file", "dossier", "folder", "génère", "generate"]
+    file_keywords = ["create", "write", "save", "file", "folder", "generate"]
     if any(k in msg_lower for k in file_keywords):
         skills.append(SKILL_FILE_OPS)
-
     return "\n".join(skills)
 
-# ── PC Actions ────────────────────────────────────────────────────────────
+# ── send_message via pyautogui / subprocess ────────────────────────────────
+def execute_send_message(app: str, recipient: str, message: str, settings: dict) -> dict:
+    """
+    Send a message through Discord, Telegram, WhatsApp, or Slack.
+    Strategy:
+      1. Open the app
+      2. Wait for it to focus
+      3. Use pyautogui to type the message (best-effort)
+    Returns a result dict; the frontend shows a card with instructions if pyautogui is unavailable.
+    """
+    os_name = platform.system()
+    app = app.lower().strip()
+
+    # Map app → protocol / URL
+    APP_PROTOCOLS = {
+        "discord":  "discord:",
+        "telegram": "tg:",
+        "whatsapp": "https://web.whatsapp.com",
+        "slack":    "slack:",
+    }
+    target = APP_PROTOCOLS.get(app)
+    if not target:
+        return {"ok": False, "message": f"Unsupported app for send_message: {app}. Supported: discord, telegram, whatsapp, slack"}
+
+    # Step 1 — open the app
+    def _launch(cmd: str):
+        if os_name == "Windows":
+            subprocess.Popen(
+                ["powershell", "-WindowStyle", "Hidden", "-Command", f"Start-Process '{cmd}'"],
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        elif os_name == "Darwin":
+            subprocess.Popen(["open", cmd])
+        else:
+            subprocess.Popen(["xdg-open", cmd])
+
+    try:
+        _launch(target)
+    except Exception as e:
+        return {"ok": False, "message": f"Could not open {app}: {e}"}
+
+    # Step 2 — try pyautogui automation
+    try:
+        import pyautogui
+        import time as _time
+        _time.sleep(3)  # wait for app to focus
+
+        # Search for recipient using Ctrl+K (Discord/Slack) or Ctrl+F (generic)
+        if app in ("discord", "slack"):
+            pyautogui.hotkey("ctrl", "k")
+            _time.sleep(0.6)
+            pyautogui.typewrite(recipient, interval=0.05)
+            _time.sleep(0.8)
+            pyautogui.press("enter")
+            _time.sleep(0.5)
+        # Type and send the message
+        pyautogui.typewrite(message, interval=0.04)
+        _time.sleep(0.3)
+        pyautogui.press("enter")
+        return {
+            "ok": True,
+            "message": f"✓ Message sent to {recipient} on {app.title()}: \"{message}\"",
+            "automated": True,
+        }
+    except ImportError:
+        # pyautogui not installed — return manual instructions
+        return {
+            "ok": True,
+            "message": (
+                f"{app.title()} has been opened. "
+                f"Please find {recipient} and send: \"{message}\"\n"
+                f"(Install pyautogui for full automation: pip install pyautogui)"
+            ),
+            "automated": False,
+        }
+    except Exception as e:
+        return {
+            "ok": True,
+            "message": f"{app.title()} opened. Could not auto-type ({e}). Send to {recipient}: \"{message}\"",
+            "automated": False,
+        }
+
+# ── PC Actions ─────────────────────────────────────────────────────────────
 def execute_pc_action(action: dict, settings: dict) -> dict:
     atype  = action.get("type", "")
     target = action.get("target", "").strip()
     os_name = platform.system()
 
+    # ── send_message ──────────────────────────────────────────────────────
+    if atype == "send_message":
+        return execute_send_message(
+            app=action.get("app", ""),
+            recipient=action.get("recipient", ""),
+            message=action.get("message", ""),
+            settings=settings,
+        )
+
+    # ── open ──────────────────────────────────────────────────────────────
     if atype == "open":
         def _launch(cmd_or_url: str):
-            """Open a URL, protocol URI, or executable on any OS."""
             if os_name == "Windows":
-                # Use PowerShell Start-Process — handles URLs, protocol URIs, .exe, app names
                 subprocess.Popen(
                     ["powershell", "-WindowStyle", "Hidden", "-Command",
                      f"Start-Process '{cmd_or_url}'"],
-                    creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
             elif os_name == "Darwin":
                 subprocess.Popen(["open", cmd_or_url])
@@ -305,17 +400,14 @@ def execute_pc_action(action: dict, settings: dict) -> dict:
                 subprocess.Popen(["xdg-open", cmd_or_url])
 
         try:
-            # 1. Direct URL → open in browser
             if target.startswith(("http://", "https://")):
                 _launch(target)
                 return {"ok": True, "message": f"Opened {target}"}
 
-            # 2. Protocol URI (steam://, spotify:, discord:, etc.)
             if "://" in target or (target.endswith(":") and len(target) > 2):
                 _launch(target)
                 return {"ok": True, "message": f"Launched {target}"}
 
-            # 3. Check registered apps dict (fuzzy match)
             reg = settings.get("apps", {})
             tl = target.lower()
             for name, cmd in reg.items():
@@ -323,7 +415,6 @@ def execute_pc_action(action: dict, settings: dict) -> dict:
                     _launch(cmd)
                     return {"ok": True, "message": f"Launched {name}"}
 
-            # 4. Known website names → open in browser
             KNOWN_SITES = {
                 "youtube": "https://youtube.com",
                 "google": "https://google.com",
@@ -341,30 +432,38 @@ def execute_pc_action(action: dict, settings: dict) -> dict:
                 "stackoverflow": "https://stackoverflow.com",
                 "chatgpt": "https://chat.openai.com",
                 "claude": "https://claude.ai",
+                "steam": "steam://open/main",
+                "telegram": "tg:",
+                "whatsapp": "https://web.whatsapp.com",
+                "slack": "slack:",
+                "vscode": "code",
+                "notepad": "notepad",
+                "calculator": "calc",
+                "explorer": "explorer",
+                "chrome": "chrome",
+                "firefox": "firefox",
             }
             tl_clean = tl.strip().lower()
             if tl_clean in KNOWN_SITES:
                 _launch(KNOWN_SITES[tl_clean])
-                return {"ok": True, "message": f"Opened {KNOWN_SITES[tl_clean]}"}
+                return {"ok": True, "message": f"Opened {tl_clean.title()}"}
 
-            # 5. Looks like a domain
             if "." in target:
                 url = target if target.startswith("http") else f"https://{target}"
                 _launch(url)
                 return {"ok": True, "message": f"Opened {url}"}
 
-            # 6. Try as app name / executable
             _launch(target)
             return {"ok": True, "message": f"Launched {target}"}
 
         except Exception as e:
-            # Last resort: try webbrowser
             try:
                 webbrowser.open(f"https://{target}.com")
                 return {"ok": True, "message": f"Opened https://{target}.com (fallback)"}
             except Exception:
                 return {"ok": False, "message": str(e)}
 
+    # ── run_script ────────────────────────────────────────────────────────
     elif atype == "run_script":
         lang = action.get("lang", "python").lower()
         code = action.get("code", "")
@@ -401,6 +500,7 @@ def execute_pc_action(action: dict, settings: dict) -> dict:
         except Exception as e:
             return {"ok": False, "message": str(e)}
 
+    # ── write_file ────────────────────────────────────────────────────────
     elif atype == "write_file":
         path_str = action.get("path", "").strip()
         content  = action.get("content", "")
@@ -408,7 +508,6 @@ def execute_pc_action(action: dict, settings: dict) -> dict:
             return {"ok": False, "message": "No path provided"}
         try:
             p = Path(path_str).expanduser()
-            # Resolve relative paths to home directory
             if not p.is_absolute():
                 p = Path.home() / p
             p.parent.mkdir(parents=True, exist_ok=True)
@@ -417,6 +516,7 @@ def execute_pc_action(action: dict, settings: dict) -> dict:
         except Exception as e:
             return {"ok": False, "message": str(e)}
 
+    # ── read_file ─────────────────────────────────────────────────────────
     elif atype == "read_file":
         p = Path(target).expanduser()
         if not p.is_absolute():
@@ -431,18 +531,21 @@ def execute_pc_action(action: dict, settings: dict) -> dict:
         except Exception as e:
             return {"ok": False, "message": str(e)}
 
+    # ── send_socials ──────────────────────────────────────────────────────
     elif atype == "send_socials":
         soc = {k: v for k, v in settings.get("socials", {}).items() if v and v.strip()}
         if not soc:
             return {"ok": False, "message": "No socials configured"}
         return {"ok": True, "message": "\n".join(f"{k}: {v}" for k, v in soc.items()), "display": True}
 
+    # ── search ────────────────────────────────────────────────────────────
     elif atype == "search":
         q = action.get("query", target)
         url = f"https://www.google.com/search?q={q.replace(' ', '+')}"
         webbrowser.open(url)
         return {"ok": True, "message": f"Searched: {q}"}
 
+    # ── list_files ────────────────────────────────────────────────────────
     elif atype == "list_files":
         path_str = action.get("path", "~").strip()
         p = Path(path_str).expanduser()
@@ -490,7 +593,6 @@ def take_screenshot() -> Optional[str]:
         return None
 
 async def is_screen_request(text: str) -> bool:
-    # Only trigger on explicit screen/vision requests — avoid false positives
     kw = ("screenshot", "screen capture", "capture d'écran",
           "regarde mon écran", "regarde l'écran", "look at my screen",
           "what's on my screen", "what is on my screen",
@@ -529,15 +631,7 @@ async def call_vision(api_key: str, img_b64: str, msg: str, sys_prompt: str) -> 
                 content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
                 if content:
                     return content
-                last_err = f"{vision_model}: empty response"
-                continue
-            elif r.status_code in (404, 400, 422):
-                last_err = f"{vision_model}: HTTP {r.status_code}"
-                continue
-            elif r.status_code == 429:
-                last_err = f"{vision_model}: rate limited"
-                continue
-            else:
+            elif r.status_code in (404, 400, 422, 429):
                 last_err = f"{vision_model}: HTTP {r.status_code}"
                 continue
         except Exception as e:
@@ -676,7 +770,6 @@ async def scan_context(req: Request):
 
 @app.get("/api/voices")
 async def get_voices():
-    """Return list of available system TTS voices."""
     os_name = platform.system()
     voices = []
     try:
@@ -713,7 +806,6 @@ async def get_voices():
 
 @app.get("/api/news")
 async def get_news():
-    """Fetch top headlines via RSS (no API key needed)."""
     feeds = [
         ("Google News FR", "https://news.google.com/rss?hl=fr&gl=FR&ceid=FR:fr"),
         ("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml"),
@@ -749,7 +841,6 @@ async def chat_ws(ws: WebSocket, uid: str):
     history  = load_history(uid)
     settings = load_settings()
 
-    # Auto-scan user profile files on connect
     profile_text = auto_scan_user_profile()
     if profile_text:
         await ws.send_text(json.dumps({"type": "profile_scanned", "chars": len(profile_text)}))
@@ -765,7 +856,6 @@ async def chat_ws(ws: WebSocket, uid: str):
             settings = load_settings()
             memory   = load_memory(uid)
 
-            # ── Control actions ──────────────────────────────────────────
             if action == "clear":
                 history = []
                 save_history(uid, history)
@@ -780,7 +870,6 @@ async def chat_ws(ws: WebSocket, uid: str):
                 await ws.send_text(json.dumps({"type": "learned"}))
                 continue
 
-            # ── Chat ─────────────────────────────────────────────────────
             user_msg = payload.get("message", "").strip()
             if not user_msg:
                 continue
@@ -797,32 +886,28 @@ async def chat_ws(ws: WebSocket, uid: str):
 
             history.append({"role": "user", "content": user_msg})
 
-            mem_ctx  = memory_summary(memory)
-            ctx_text = settings.get("context_text", "")
+            mem_ctx    = memory_summary(memory)
+            ctx_text   = settings.get("context_text", "")
             sys_prompt = settings["system_prompt"]
 
-            # Inject profile scan
             if profile_text:
-                sys_prompt = f"[USER PROFILE — fichiers détectés sur son PC]:\n{profile_text}\n\n" + sys_prompt
-
+                sys_prompt = f"[USER PROFILE — files detected on their PC]:\n{profile_text}\n\n" + sys_prompt
             if ctx_text:
-                sys_prompt = f"[CONTEXT FILES — projets/PC de l'utilisateur]:\n{ctx_text}\n\n" + sys_prompt
+                sys_prompt = f"[CONTEXT FILES]:\n{ctx_text}\n\n" + sys_prompt
             if mem_ctx:
                 sys_prompt = mem_ctx + "\n\n" + sys_prompt
 
-            # Inject relevant skills based on message
             skills = get_relevant_skills(user_msg)
             if skills:
                 sys_prompt = sys_prompt + "\n\n" + skills
 
-            # ── Vision shortcut ──────────────────────────────────────────
             api_key = settings.get("openrouter_key", "").strip()
             if (api_key and settings.get("backend", "openrouter") == "openrouter"
                     and await is_screen_request(user_msg)):
-                await ws.send_text(json.dumps({"type": "token", "content": "📸 Capture en cours…\n\n"}))
+                await ws.send_text(json.dumps({"type": "token", "content": "📸 Capturing screen…\n\n"}))
                 img = take_screenshot()
                 if img is None:
-                    err = "⚠ Impossible de capturer l'écran. Installe: pip install mss pillow"
+                    err = "⚠ Cannot capture screen. Install: pip install mss pillow"
                     await ws.send_text(json.dumps({"type": "done", "content": err}))
                     history.append({"role": "assistant", "content": err})
                     save_history(uid, history)
@@ -834,7 +919,6 @@ async def chat_ws(ws: WebSocket, uid: str):
                 await ws.send_text(json.dumps({"type": "done", "content": resp}))
                 continue
 
-            # ── LLM call ─────────────────────────────────────────────────
             messages = [{"role": "system", "content": sys_prompt}] + history[-24:]
             full_response = ""
             success = False
@@ -885,7 +969,7 @@ async def chat_ws(ws: WebSocket, uid: str):
                         idx = (idx + 1) % len(FREE_MODELS); tried += 1
 
                 if not success:
-                    await ws.send_text(json.dumps({"type": "error", "content": "Tous les modèles sont rate-limited. Réessaie dans un moment."}))
+                    await ws.send_text(json.dumps({"type": "error", "content": "All models rate-limited. Try again in a moment."}))
                     history.pop()
                     continue
 
@@ -912,10 +996,8 @@ async def chat_ws(ws: WebSocket, uid: str):
                     history.pop()
                     continue
 
-            # Strip <think> blocks
             clean = re.sub(r"<think>.*?</think>", "", full_response, flags=re.DOTALL).strip()
 
-            # Parse action blocks
             action_pattern = re.compile(r"```action\s*(.*?)\s*```", re.DOTALL)
             actions_found  = []
             for m2 in action_pattern.finditer(clean):
@@ -925,7 +1007,6 @@ async def chat_ws(ws: WebSocket, uid: str):
                     pass
             display = action_pattern.sub("", clean).strip()
 
-            # Handle read_file inline
             for act in list(actions_found):
                 if act.get("type") == "read_file":
                     res = execute_pc_action(act, settings)
@@ -954,55 +1035,25 @@ async def chat_ws(ws: WebSocket, uid: str):
     except WebSocketDisconnect:
         pass
 
-# ── Startup info endpoint ─────────────────────────────────────────────────
+# ── Startup info ───────────────────────────────────────────────────────────
 @app.get("/api/startup-info")
 async def startup_info():
-    """Return instructions to auto-launch Kyrox at startup."""
     os_name = platform.system()
     script_path = str(Path(__file__).resolve())
-    python_path = "python"  # assume python is on PATH
+    python_path = "python"
 
     if os_name == "Windows":
-        # Create a .bat file in Startup folder
         startup_folder = Path.home() / "AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup"
         bat_path = startup_folder / "kyrox.bat"
         bat_content = f'@echo off\nstart "" /B {python_path} -m uvicorn main:app --host 127.0.0.1 --port 8000 --app-dir "{Path(script_path).parent}"'
-        instructions = (
-            f"To auto-start Kyrox on Windows login:\n"
-            f"1. Create file: {bat_path}\n"
-            f"   Content:\n{bat_content}\n\n"
-            f"Or run this command (as admin) to install it automatically:"
-        )
+        instructions = f"To auto-start Kyrox on Windows login:\n1. Create file: {bat_path}\n   Content:\n{bat_content}"
         auto_cmd = f'echo {bat_content} > "{bat_path}"'
     elif os_name == "Darwin":
-        plist = f"""<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>Label</key><string>uk.nemea.kyrox</string>
-  <key>ProgramArguments</key><array>
-    <string>{python_path}</string><string>-m</string><string>uvicorn</string>
-    <string>main:app</string><string>--host</string><string>127.0.0.1</string>
-    <string>--port</string><string>8000</string>
-    <string>--app-dir</string><string>{Path(script_path).parent}</string>
-  </array>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-</dict></plist>"""
         plist_path = Path.home() / "Library/LaunchAgents/uk.nemea.kyrox.plist"
-        instructions = f"Save this plist to:\n{plist_path}\nThen run: launchctl load {plist_path}"
-        auto_cmd = f"echo '{plist}' > {plist_path} && launchctl load {plist_path}"
+        instructions = f"Save a launchd plist to:\n{plist_path}\nThen run: launchctl load {plist_path}"
+        auto_cmd = f"launchctl load {plist_path}"
     else:
-        service = f"""[Unit]
-Description=Kyrox AI
-After=network.target
-
-[Service]
-ExecStart={python_path} -m uvicorn main:app --host 127.0.0.1 --port 8000 --app-dir {Path(script_path).parent}
-Restart=always
-
-[Install]
-WantedBy=default.target"""
         instructions = "Create a systemd user service or add to .bashrc / .profile"
-        auto_cmd = f"echo '{service}' > ~/.config/systemd/user/kyrox.service && systemctl --user enable kyrox && systemctl --user start kyrox"
+        auto_cmd = "systemctl --user enable kyrox && systemctl --user start kyrox"
 
     return {"os": os_name, "instructions": instructions, "auto_cmd": auto_cmd, "script": script_path}
