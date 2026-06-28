@@ -170,44 +170,101 @@ VISION_MODELS = [
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-# ── Skills ─────────────────────────────────────────────────────────────────
-SKILL_FRONTEND = """
-[SKILL: Frontend / HTML creation]
-When creating HTML pages, ALWAYS produce a complete, visually stunning result:
-- Use modern CSS: gradients, glassmorphism, animations, hover effects, box-shadows
-- Google Fonts (import from fonts.googleapis.com)
-- Responsive layout with flexbox or grid
-- Dark or light theme with cohesive color palette
-- Smooth transitions on all interactive elements
-- Never output a blank white page with plain text
-- For games: use canvas or CSS animations, add score, levels, sound effects via Web Audio API
-- For landing pages: hero section, cards, CTA buttons, footer
-- For dashboards: sidebar nav, stat cards, charts (use Chart.js from cdnjs)
-- ALWAYS include meta viewport tag and charset
-- Inline all CSS and JS in a single .html file unless told otherwise
-"""
+# ── Skills system ──────────────────────────────────────────────────────────
+# Skills are .md files in BASE_DIR/skills/
+# Each file has a YAML frontmatter with: name, description, triggers (comma-separated)
+# Kyrox loads them at startup and injects relevant ones per message.
+# Install new skills: drop a .md in skills/ or pull from GitHub.
 
-SKILL_PYTHON = """
-[SKILL: Python scripting]
-When writing Python scripts:
-- Add proper error handling (try/except) and meaningful error messages
-- Use f-strings, type hints where helpful
-- Add a if __name__ == '__main__' guard
-- For CLI tools: use argparse or sys.argv
-- For file operations: always use pathlib.Path
-- Add brief docstrings for functions
-- Print clear status messages so the user knows what's happening
-"""
+SKILLS_DIR = BASE_DIR / "skills"
+SKILLS_DIR.mkdir(exist_ok=True)
 
-SKILL_FILE_OPS = """
-[SKILL: File system operations]
-When creating or writing files:
-- Always confirm the full path you're writing to
-- Use the write_file action with absolute or ~/relative paths
-- After writing, mention what was created and where
-"""
+# In-memory skill registry: list of { name, description, triggers, content }
+_SKILL_REGISTRY: list[dict] = []
 
-# ── System prompt ──────────────────────────────────────────────────────────
+def _parse_skill_file(path: Path) -> dict | None:
+    """Parse a skill .md file with YAML-style frontmatter."""
+    try:
+        raw = path.read_text(encoding="utf-8")
+        # Extract frontmatter between --- delimiters
+        if raw.startswith("---"):
+            parts = raw.split("---", 2)
+            if len(parts) >= 3:
+                fm_raw, body = parts[1], parts[2].strip()
+                meta = {}
+                for line in fm_raw.strip().splitlines():
+                    if ":" in line:
+                        k, v = line.split(":", 1)
+                        meta[k.strip()] = v.strip()
+                triggers = [t.strip().lower() for t in meta.get("triggers", "").split(",") if t.strip()]
+                return {
+                    "name":        meta.get("name", path.stem),
+                    "description": meta.get("description", ""),
+                    "triggers":    triggers,
+                    "content":     body,
+                    "path":        str(path),
+                }
+    except Exception as e:
+        print(f"[skills] Failed to load {path.name}: {e}")
+    return None
+
+def reload_skills():
+    """Scan SKILLS_DIR and reload all skills into the registry."""
+    global _SKILL_REGISTRY
+    _SKILL_REGISTRY = []
+    for md_file in sorted(SKILLS_DIR.glob("*.md")):
+        skill = _parse_skill_file(md_file)
+        if skill:
+            _SKILL_REGISTRY.append(skill)
+    print(f"[skills] Loaded {len(_SKILL_REGISTRY)} skill(s): {[s['name'] for s in _SKILL_REGISTRY]}")
+
+def get_relevant_skills(message: str) -> str:
+    """
+    Score each skill against the message by counting trigger keyword hits.
+    Inject up to 3 most relevant skills into the prompt.
+    """
+    msg_lower = message.lower()
+    scored = []
+    for skill in _SKILL_REGISTRY:
+        score = sum(1 for t in skill["triggers"] if t in msg_lower)
+        if score > 0:
+            scored.append((score, skill))
+    # Sort by score desc, take top 3
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top = scored[:3]
+    if not top:
+        return ""
+    blocks = []
+    for _, skill in top:
+        blocks.append(f"[SKILL: {skill['name']}]\n{skill['content']}")
+    return "\n\n".join(blocks)
+
+def install_skill_from_url(url: str) -> dict:
+    """
+    Download a skill .md from a raw GitHub URL and save it to SKILLS_DIR.
+    Returns { ok, name, message }
+    """
+    try:
+        import httpx as _httpx
+        r = _httpx.get(url, timeout=10, follow_redirects=True)
+        r.raise_for_status()
+        content = r.text
+        # Parse to get name
+        skill_name = url.split("/")[-1].replace(".md", "")
+        if "---" in content:
+            for line in content.split("---")[1].splitlines():
+                if line.startswith("name:"):
+                    skill_name = line.split(":", 1)[1].strip()
+                    break
+        dest = SKILLS_DIR / f"{skill_name}.md"
+        dest.write_text(content, encoding="utf-8")
+        reload_skills()
+        return {"ok": True, "name": skill_name, "message": f"Skill '{skill_name}' installed."}
+    except Exception as e:
+        return {"ok": False, "name": "", "message": str(e)}
+
+# Load skills at startup
+reload_skills()
 DEFAULT_SYSTEM_PROMPT = (
     "You are Kyrox, an elite AI companion inspired by JARVIS from Iron Man. "
     "You are sharp, confident, slightly witty, and deeply helpful. "
@@ -446,23 +503,6 @@ def scan_context_files(paths: list[str]) -> str:
                     except Exception:
                         pass
     return "\n\n---\n\n".join(chunks)[:12000]
-
-# ── Skill injection ────────────────────────────────────────────────────────
-def get_relevant_skills(message: str) -> str:
-    msg_lower = message.lower()
-    skills = []
-    html_keywords = ["html", "page", "site", "website", "web", "css", "interface", "landing",
-                     "design", "game", "dashboard", "card", "portfolio", "blog", "form",
-                     "animation", "button"]
-    if any(k in msg_lower for k in html_keywords):
-        skills.append(SKILL_FRONTEND)
-    python_keywords = ["python", "script", "code", ".py", "automate", "file", "list", "calculate"]
-    if any(k in msg_lower for k in python_keywords):
-        skills.append(SKILL_PYTHON)
-    file_keywords = ["create", "write", "save", "file", "folder", "generate"]
-    if any(k in msg_lower for k in file_keywords):
-        skills.append(SKILL_FILE_OPS)
-    return "\n".join(skills)
 
 # ── send_message via pyautogui / subprocess ────────────────────────────────
 def execute_send_message(app: str, recipient: str, message: str, settings: dict) -> dict:
@@ -1021,7 +1061,46 @@ async def cache_voices(req: Request):
     save_settings(s)
     return {"ok": True, "count": len(s["_installed_voices"])}
 
-@app.get("/api/news")
+# ── Skills API ─────────────────────────────────────────────────────────────
+
+@app.get("/api/skills")
+async def list_skills():
+    """Return all installed skills."""
+    return {
+        "skills": [
+            {"name": s["name"], "description": s["description"], "triggers": s["triggers"]}
+            for s in _SKILL_REGISTRY
+        ]
+    }
+
+@app.post("/api/skills/install")
+async def install_skill(req: Request):
+    """Install a skill from a raw GitHub URL. Body: { url: '...' }"""
+    body = await req.json()
+    url = body.get("url", "").strip()
+    if not url:
+        return JSONResponse({"ok": False, "message": "No URL provided"}, status_code=400)
+    result = install_skill_from_url(url)
+    return result
+
+@app.delete("/api/skills/{name}")
+async def delete_skill(name: str):
+    """Uninstall a skill by name."""
+    for md_file in SKILLS_DIR.glob("*.md"):
+        skill = _parse_skill_file(md_file)
+        if skill and skill["name"] == name:
+            md_file.unlink()
+            reload_skills()
+            return {"ok": True, "message": f"Skill '{name}' removed."}
+    return JSONResponse({"ok": False, "message": f"Skill '{name}' not found."}, status_code=404)
+
+@app.post("/api/skills/reload")
+async def reload_skills_endpoint():
+    """Force reload all skills from disk."""
+    reload_skills()
+    return {"ok": True, "count": len(_SKILL_REGISTRY)}
+
+
 async def get_news():
     feeds = [
         ("Google News FR", "https://news.google.com/rss?hl=fr&gl=FR&ceid=FR:fr"),
