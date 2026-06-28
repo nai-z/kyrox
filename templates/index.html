@@ -638,12 +638,41 @@ function updateSidebarMemory() {
   const facts=memory.facts||[];
   document.getElementById('stat-memory').textContent=`${facts.length} fact${facts.length!==1?'s':''}`;
   const el=document.getElementById('sidebar-memory'); el.innerHTML='';
-  if(!facts.length){el.innerHTML='<div style="font-size:11px;color:var(--text3);font-family:var(--mono);padding:0 14px 8px">No memory yet.</div>';return;}
-  facts.forEach((f,i)=>{
-    const d=document.createElement('div'); d.className='fact-chip';
-    d.innerHTML=`<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f)}</span><button onclick="deleteFact(${i})" title="Delete">✕</button>`;
-    el.appendChild(d);
-  });
+
+  // Facts
+  if(!facts.length){
+    el.innerHTML='<div style="font-size:11px;color:var(--text3);font-family:var(--mono);padding:0 14px 8px">No memory yet.</div>';
+  } else {
+    facts.forEach((f,i)=>{
+      const d=document.createElement('div'); d.className='fact-chip';
+      d.innerHTML=`<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f)}</span><button onclick="deleteFact(${i})" title="Delete">✕</button>`;
+      el.appendChild(d);
+    });
+  }
+
+  // Scanned files context
+  const ctx = settings.context_text||'';
+  if(ctx) {
+    const hdr=document.createElement('div');
+    hdr.style.cssText='font-family:var(--mono);font-size:8px;letter-spacing:3px;color:var(--text3);text-transform:uppercase;margin:10px 14px 6px;';
+    hdr.textContent='SCANNED FILES';
+    el.appendChild(hdr);
+    // Show file names extracted from [File: name] markers
+    const files=[...ctx.matchAll(/\[File:\s*([^\]]+)\]/g)].map(m=>m[1]);
+    if(files.length){
+      files.forEach(name=>{
+        const d=document.createElement('div'); d.className='fact-chip';
+        d.style.cssText='margin:0 14px 3px;cursor:default';
+        d.innerHTML=`<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2)">📄 ${esc(name)}</span>`;
+        el.appendChild(d);
+      });
+    } else {
+      const d=document.createElement('div');
+      d.style.cssText='font-size:11px;color:var(--text2);font-family:var(--mono);padding:0 14px 4px';
+      d.textContent=`${ctx.length.toLocaleString()} chars loaded`;
+      el.appendChild(d);
+    }
+  }
 }
 
 async function deleteFact(i) {
@@ -696,7 +725,10 @@ function handleWS(msg) {
     case 'learned':
       fetch(`/api/memory/${currentUser}`).then(r=>r.json()).then(m=>{memory=m;updateSidebarMemory();}); break;
     case 'profile_scanned':
-      toast(`✓ Profile scanned — ${msg.chars} chars loaded`); break;
+      toast(`✓ Profile scanned — ${msg.chars} chars loaded`);
+      fetch('/api/settings').then(r=>r.json()).then(s=>{
+        settings=s; updateSidebarMemory();
+      }); break;
     case 'model_switch':
       addModelNotice(msg.from); break;
   }
