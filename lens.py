@@ -112,14 +112,20 @@ def call_vision(img_b64: str, mime: str, prompt: str, on_done, on_status):
     def _run():
         try:
             on_status("Connecting…", C["orange"])
-            req = urllib.request.Request(f"{KYROX_URL}/api/settings")
-            with urllib.request.urlopen(req, timeout=5) as r:
-                settings = json.loads(r.read())
-            api_key = settings.get("openrouter_key", "").strip()
+            try:
+                req = urllib.request.Request(f"{KYROX_URL}/api/settings")
+                with urllib.request.urlopen(req, timeout=5) as r:
+                    settings = json.loads(r.read())
+                api_key = settings.get("openrouter_key", "").strip()
+            except Exception:
+                on_done("⚠ Cannot reach Kyrox backend.\nMake sure Kyrox is running at localhost:8000,\nor open Kyrox in your browser first.")
+                return
+
             if not api_key:
                 on_done("⚠ No API key — add your OpenRouter key in Kyrox settings.")
                 return
 
+            last_err = ""
             for model in VISION_MODELS:
                 on_status(f"Asking {model.split('/')[-1]}…", C["text2"])
                 payload = json.dumps({
@@ -147,12 +153,15 @@ def call_vision(img_b64: str, mime: str, prompt: str, on_done, on_status):
                         if text:
                             on_done(text)
                             return
+                        last_err = "Empty response from model."
                 except urllib.error.HTTPError as e:
+                    last_err = f"HTTP {e.code} from {model.split('/')[-1]}"
                     if e.code in (429, 404, 400, 422):
                         continue
-                except Exception:
+                except Exception as e:
+                    last_err = str(e)
                     continue
-            on_done("⚠ All vision models unavailable.")
+            on_done(f"⚠ All vision models unavailable.\n{last_err}")
         except Exception as e:
             on_done(f"⚠ Error: {e}")
     threading.Thread(target=_run, daemon=True).start()
@@ -161,21 +170,27 @@ def call_text(prompt: str, on_done, on_status):
     """Send a plain text question to Kyrox backend (no image)."""
     def _run():
         try:
-            on_status("Thinking…", C["orange"])
-            req = urllib.request.Request(f"{KYROX_URL}/api/settings")
-            with urllib.request.urlopen(req, timeout=5) as r:
-                settings = json.loads(r.read())
-            api_key = settings.get("openrouter_key", "").strip()
-            if not api_key:
-                on_done("⚠ No API key configured.")
+            on_status("Connecting…", C["orange"])
+            try:
+                req = urllib.request.Request(f"{KYROX_URL}/api/settings")
+                with urllib.request.urlopen(req, timeout=5) as r:
+                    settings = json.loads(r.read())
+                api_key = settings.get("openrouter_key", "").strip()
+            except Exception:
+                # Backend not running — ask user to add key directly or start Kyrox
+                on_done("⚠ Cannot reach Kyrox backend.\nMake sure Kyrox is running at localhost:8000,\nor open Kyrox in your browser first.")
                 return
 
-            from urllib.parse import urlencode
+            if not api_key:
+                on_done("⚠ No API key configured.\nAdd your OpenRouter key in Kyrox settings.")
+                return
+
             models = [
                 "deepseek/deepseek-v3:free",
                 "meta-llama/llama-3.3-70b-instruct:free",
                 "openrouter/auto",
             ]
+            last_err = ""
             for model in models:
                 on_status(f"Asking {model.split('/')[-1]}…", C["text2"])
                 payload = json.dumps({
@@ -200,9 +215,15 @@ def call_text(prompt: str, on_done, on_status):
                         if text:
                             on_done(text)
                             return
-                except Exception:
+                        last_err = "Empty response from model."
+                except urllib.error.HTTPError as e:
+                    last_err = f"HTTP {e.code} from {model.split('/')[-1]}"
+                    if e.code in (429, 404, 400, 422):
+                        continue
+                except Exception as e:
+                    last_err = str(e)
                     continue
-            on_done("⚠ Could not get a response.")
+            on_done(f"⚠ Could not get a response.\n{last_err}")
         except Exception as e:
             on_done(f"⚠ Error: {e}")
     threading.Thread(target=_run, daemon=True).start()
@@ -244,6 +265,7 @@ class KyroxLens:
 
         self._dx = self._dy = 0
         self._thumb = None
+        self._upload_thumb = None          # thumbnail for upload preview
         self._uploaded_img_b64 = None   # base64 of user-uploaded image
         self._uploaded_img_mime = None
         self._uploaded_img_name = ""
@@ -352,6 +374,19 @@ class KyroxLens:
         )
         self.upload_lbl.pack(fill="x", padx=0, pady=(0, 4))
         self.upload_lbl.bind("<Button-1>", lambda e: self._pick_file())
+
+        # Upload preview (mirrors screen preview)
+        up_prev_outer = tk.Frame(self.upload_frame, bg=C["text3"], padx=1, pady=1)
+        up_prev_outer.pack(fill="x", pady=(0, 4))
+        up_prev_inner = tk.Frame(up_prev_outer, bg=C["bg2"])
+        up_prev_inner.pack(fill="both")
+        self.upload_prev_lbl = tk.Label(
+            up_prev_inner, bg=C["bg2"],
+            text="No image loaded",
+            font=("Consolas", 8), fg=C["text3"],
+            width=240, height=135,
+        )
+        self.upload_prev_lbl.pack()
 
         ub_f = tk.Frame(self.upload_frame, bg=C["bg"])
         ub_f.pack(fill="x")
@@ -492,13 +527,13 @@ class KyroxLens:
             self._uploaded_img_name = name
             self.upload_lbl.config(text=f"✓  {name}", fg=C["text"])
 
-            # show thumbnail
+            # show thumbnail in upload preview
             if HAS_PIL:
                 img = Image.open(path)
                 img.thumbnail((240, 135), Image.LANCZOS)
                 ph = ImageTk.PhotoImage(img)
-                self._thumb = ph
-                self.prev_lbl.config(image=ph, text="", width=240, height=135)
+                self._upload_thumb = ph
+                self.upload_prev_lbl.config(image=ph, text="", width=240, height=135)
         except Exception as e:
             self.upload_lbl.config(text=f"⚠ {e}", fg=C["danger"])
 
@@ -514,14 +549,18 @@ class KyroxLens:
                 text = f.read(20000)  # cap at 20k chars
             self._uploaded_file_text = text
             self._uploaded_img_b64   = None
+            self._uploaded_img_mime  = None
             name = os.path.basename(path)
             self._uploaded_img_name  = name
             self.upload_lbl.config(text=f"✓  {name}  ({len(text)} chars)", fg=C["text"])
-            self.prev_lbl.config(image="", text=f"{name}\n{len(text)} chars", width=240, height=135)
+            self._upload_thumb = None
+            self.upload_prev_lbl.config(image="", text=f"{name}\n{len(text):,} chars", width=240, height=135)
         except Exception as e:
             self.upload_lbl.config(text=f"⚠ {e}", fg=C["danger"])
 
     def _pick_file(self):
+        """Called when clicking the upload label — opens image picker by default.
+        Use the PICK FILE button below for text/code files."""
         self._pick_image()
 
     # ── Drag ──────────────────────────────────────────────────────────────────
