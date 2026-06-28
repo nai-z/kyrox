@@ -736,30 +736,49 @@ function executeActionClient(act) {
   if (type === 'open') {
     let target = (act.target || '').trim();
     const tl = target.toLowerCase().trim();
-    // Protocol URLs (discord:, steam://, https://, etc.)
-    if (target.startsWith('http://') || target.startsWith('https://') ||
-        target.includes('://') || (target.endsWith(':') && target.length > 2)) {
+
+    // HTTP/HTTPS URLs → open in new tab (no popup)
+    if (target.startsWith('http://') || target.startsWith('https://')) {
       window.open(target, '_blank');
       return {ok:true, message:`Opened ${act.label||target}`, client:true};
     }
-    // Known app by name
+
+    // App protocols (discord:, steam://, spotify:, tg:, etc.) → route via backend to avoid browser popup
+    if (target.includes('://') || (target.endsWith(':') && target.length > 2)) {
+      fetch('/api/action', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action: act})}).catch(()=>{});
+      return {ok:true, message:`Launched ${act.label||target}`, client:true};
+    }
+
+    // Known app by name → backend handles it (no popup)
     if (APP_PROTOCOLS_CLIENT[tl]) {
-      window.open(APP_PROTOCOLS_CLIENT[tl], '_blank');
+      fetch('/api/action', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action: act})}).catch(()=>{});
       return {ok:true, message:`Launched ${tl}`, client:true};
     }
-    // Known site by name
+
+    // Known website → open in new tab
     if (KNOWN_SITES_CLIENT[tl]) {
-      window.open(KNOWN_SITES_CLIENT[tl], '_blank');
+      const url = KNOWN_SITES_CLIENT[tl];
+      if (url.startsWith('http')) {
+        window.open(url, '_blank');
+      } else {
+        fetch('/api/action', {method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({action: {type:'open', target:url, label:act.label||tl}})}).catch(()=>{});
+      }
       return {ok:true, message:`Opened ${tl}`, client:true};
     }
-    // Has a dot → treat as URL
+
+    // Has a dot → treat as URL, open in new tab
     if (target.includes('.')) {
       window.open(target.startsWith('http') ? target : 'https://'+target, '_blank');
       return {ok:true, message:`Opened ${target}`, client:true};
     }
-    // Fallback: try as URL
-    window.open('https://'+target+'.com', '_blank');
-    return {ok:true, message:`Opened ${target}`, client:true};
+
+    // Fallback → backend
+    fetch('/api/action', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action: act})}).catch(()=>{});
+    return {ok:true, message:`Launched ${target}`, client:true};
   }
 
   // ── search ──
@@ -769,11 +788,10 @@ function executeActionClient(act) {
     return {ok:true, message:`Searched: ${q}`, client:true};
   }
 
-  // ── send_message ── open the app, show instructions
+  // ── send_message ── always via backend (avoids browser popup)
   if (type === 'send_message') {
-    const app = (act.app||'').toLowerCase();
-    const protocols = {discord:'discord:', telegram:'tg:', whatsapp:'https://web.whatsapp.com', slack:'slack:'};
-    if (protocols[app]) window.open(protocols[app], '_blank');
+    fetch('/api/action', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action: act})}).catch(()=>{});
     return {
       ok: true,
       message: `${act.app} opened — find ${act.recipient} and send: "${act.message}"`,
