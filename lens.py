@@ -21,7 +21,17 @@ try:
 except ImportError:
     HAS_PIL = False
 
-KYROX_URL = "http://localhost:8000"
+KYROX_URL = "http://localhost:8000"   # overridden at runtime by _detect_backend()
+
+def _detect_backend() -> str:
+    """Try port 80 first (installer default), fall back to 8000 (dev default)."""
+    for port in (80, 8000):
+        try:
+            urllib.request.urlopen(f"http://localhost:{port}/api/settings", timeout=2)
+            return f"http://localhost:{port}"
+        except Exception:
+            pass
+    return "http://localhost:80"   # return 80 as default so error messages make sense
 
 # ── Palette (matches index.html :root) ────────────────────────────────────────
 C = {
@@ -118,7 +128,7 @@ def call_vision(img_b64: str, mime: str, prompt: str, on_done, on_status):
                     settings = json.loads(r.read())
                 api_key = settings.get("openrouter_key", "").strip()
             except Exception:
-                on_done("⚠ Cannot reach Kyrox backend.\nMake sure Kyrox is running at localhost:8000,\nor open Kyrox in your browser first.")
+                on_done(f"⚠ Cannot reach Kyrox backend ({KYROX_URL}).\nStart Kyrox then reopen Lens.")
                 return
 
             if not api_key:
@@ -178,7 +188,7 @@ def call_text(prompt: str, on_done, on_status):
                 api_key = settings.get("openrouter_key", "").strip()
             except Exception:
                 # Backend not running — ask user to add key directly or start Kyrox
-                on_done("⚠ Cannot reach Kyrox backend.\nMake sure Kyrox is running at localhost:8000,\nor open Kyrox in your browser first.")
+                on_done(f"⚠ Cannot reach Kyrox backend ({KYROX_URL}).\nStart Kyrox then reopen Lens.")
                 return
 
             if not api_key:
@@ -273,6 +283,10 @@ class KyroxLens:
         self.monitors = get_monitors()
         self.sel_mon  = tk.IntVar(value=min(1, len(self.monitors) - 1))
         self.mode     = tk.StringVar(value="screen")  # "screen" | "upload"
+
+        # Detect which port Kyrox is running on (80 = installer, 8000 = dev)
+        global KYROX_URL
+        KYROX_URL = _detect_backend()
 
         self._build()
         self._refresh_thumb()
