@@ -1,1250 +1,640 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
-<title>Kyrox AI</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  /* ── Palette: pure black/white, no purple ── */
-  --bg:#0a0a0a;--bg2:#111;--bg3:#161616;
-  --border:rgba(255,255,255,0.1);--border2:rgba(255,255,255,0.06);
-  --accent:#fff;--accent-dim:rgba(255,255,255,0.06);
-  --text:#f0f0f0;--text2:#888;--text3:#333;
-  --danger:#ff4040;--green:#00cc6a;--orange:#ff9500;
-  --r:14px;--r2:10px;--r3:20px;--font:'Space Grotesk',sans-serif;--mono:'Space Mono',monospace;--display:'Syne',sans-serif;
-}
-html,body{height:100%;overflow:hidden;background:var(--bg)}
-body{font-family:var(--font);color:var(--text);-webkit-font-smoothing:antialiased}
+"""
+Kyrox Lens — Floating overlay (always on top)
+Same black/white aesthetic as the web UI.
+Launch manually via the ⊡ button in the browser, or run directly: python lens.py
+"""
 
-::-webkit-scrollbar{width:2px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px}
+import tkinter as tk
+from tkinter import font as tkfont, filedialog
+import threading, base64, io, json, sys, os
+import urllib.request, urllib.error
 
-/* ── Layout ── */
-#app{position:relative;display:grid;grid-template-rows:52px 1fr;grid-template-columns:220px 1fr;grid-template-areas:"header header" "sidebar main";height:100dvh}
+try:
+    import mss
+    HAS_MSS = True
+except ImportError:
+    HAS_MSS = False
 
-/* ── Header ── */
-header{grid-area:header;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--bg);border-bottom:1px solid var(--border2);position:relative;z-index:50}
-.logo{font-family:var(--display);font-size:18px;font-weight:800;letter-spacing:6px;color:var(--accent);text-transform:uppercase}
-.logo em{color:var(--text3);font-style:normal}
-.header-center{display:flex;align-items:center;gap:10px}
-.status-chip{display:flex;align-items:center;gap:6px;padding:4px 14px;border:1px solid var(--border2);border-radius:var(--r3);font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--text2);text-transform:uppercase}
-.dot{width:5px;height:5px;border-radius:50%;background:var(--text3);flex-shrink:0}
-.dot.on{background:var(--green)}
-.dot.err{background:var(--danger)}
-.dot.listen{background:var(--orange);animation:blink-dot .7s ease infinite}
-@keyframes blink-dot{0%,100%{opacity:1}50%{opacity:.2}}
-.model-tag{font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.5px}
-.header-right{display:flex;gap:6px}
-.btn-icon{width:32px;height:32px;border:1px solid var(--border2);border-radius:8px;background:transparent;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .15s}
-.btn-icon:hover{border-color:var(--border);color:var(--text)}
+try:
+    from PIL import Image, ImageTk
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
 
-/* ── Sidebar ── */
-#sidebar{grid-area:sidebar;display:flex;flex-direction:column;background:var(--bg2);border-right:1px solid var(--border2);overflow:hidden}
-.sidebar-section{padding:14px 14px 8px;flex-shrink:0}
-.sidebar-label{font-family:var(--mono);font-size:8px;letter-spacing:3px;color:var(--text3);text-transform:uppercase;margin-bottom:10px}
-#user-list{display:flex;flex-direction:column;gap:2px}
-.user-item{display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border:1px solid transparent;border-radius:var(--r2);transition:all .15s}
-.user-item:hover{background:var(--accent-dim);border-color:var(--border2)}
-.user-item.active{background:var(--accent-dim);border-color:var(--border)}
-.user-avatar{width:26px;height:26px;flex-shrink:0;border-radius:8px;background:var(--text3);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;font-weight:700;color:var(--bg)}
-.user-name{font-size:13px;font-weight:500;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.btn-new-user{width:100%;padding:7px;background:transparent;border:1px dashed var(--border2);border-radius:var(--r2);color:var(--text3);cursor:pointer;font-size:11px;font-family:var(--mono);transition:all .15s;margin-top:6px;letter-spacing:1px}
-.btn-new-user:hover{border-color:var(--border);color:var(--text2)}
-.sidebar-divider{height:1px;background:var(--border2);margin:6px 14px}
-#sidebar-memory{flex:1;overflow-y:auto;padding:0 14px 12px;display:flex;flex-direction:column;gap:3px}
-.fact-chip{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 10px;border-radius:var(--r2);background:var(--bg3);border:1px solid var(--border2);font-size:11px;font-family:var(--mono);color:var(--text2)}
-.fact-chip button{background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px;padding:0 2px;flex-shrink:0}
-.fact-chip button:hover{color:var(--danger)}
-.stat-mini{display:flex;align-items:center;justify-content:space-between;padding:5px 10px;border-radius:var(--r2);background:var(--bg3);border:1px solid var(--border2);margin-bottom:3px}
-.stat-mini-label{font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:1px;text-transform:uppercase}
-.stat-mini-val{font-family:var(--mono);font-size:10px;color:var(--text2)}
+KYROX_URL = "http://localhost:8000"
 
-/* ── Main ── */
-#main{grid-area:main;display:flex;flex-direction:column;overflow:hidden;position:relative}
-#mode-tabs{display:flex;align-items:center;gap:0;padding:10px 20px 0;flex-shrink:0}
-.tab{padding:7px 18px;border:1px solid transparent;border-radius:var(--r2);background:transparent;color:var(--text3);cursor:pointer;font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;transition:all .15s}
-.tab:hover{color:var(--text2);background:var(--accent-dim)}
-.tab.active{background:var(--accent-dim);border-color:var(--border2);color:var(--text)}
-.tab-content{flex:1;overflow:hidden;display:none;flex-direction:column}
-.tab-content.active{display:flex}
-
-/* ── Voice view ── */
-#voice-view{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:32px;padding:24px;border-top:1px solid var(--border2);background:var(--bg3)}
-.orb-wrap{position:relative;width:200px;height:200px;display:flex;align-items:center;justify-content:center;cursor:pointer}
-.orb{width:120px;height:120px;border-radius:50%;position:relative;z-index:5;background:var(--bg2);border:1px solid var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;transition:all .3s}
-.orb:hover{border-color:var(--accent);background:var(--accent-dim)}
-.orb.listening{border-color:var(--orange)}
-.orb.speaking{border-color:var(--accent)}
-@keyframes orb-speak{from{opacity:.6}to{opacity:1}}
-.orb-label{font-family:var(--display);font-size:13px;font-weight:800;letter-spacing:4px;color:var(--text);text-transform:uppercase}
-.orb-sub{font-family:var(--mono);font-size:8px;color:var(--text3);letter-spacing:2px;text-transform:uppercase}
-.orb-listen-text{font-family:var(--mono);font-size:8px;color:var(--orange);letter-spacing:1px;text-transform:uppercase;display:none}
-.orb.listening .orb-listen-text{display:block}
-.orb.listening .orb-sub{display:none}
-.ring{position:absolute;border-radius:50%;border:1px solid transparent}
-.r1{width:152px;height:152px;border-top:1px solid rgba(255,255,255,.1);border-right:1px solid rgba(255,255,255,.03);animation:cw 8s linear infinite}
-.r2{width:178px;height:178px;border-bottom:1px solid rgba(255,255,255,.06);border-left:1px solid rgba(255,255,255,.02);animation:ccw 13s linear infinite}
-.r3{width:198px;height:198px;border-top:1px solid rgba(255,255,255,.04);animation:cw 22s linear infinite}
-@keyframes cw{to{transform:rotate(360deg)}}
-@keyframes ccw{to{transform:rotate(-360deg)}}
-.ring-dot{position:absolute;width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,.4);top:0;left:50%;transform:translate(-50%,-50%);transform-origin:center calc(50% + 76px)}
-.r1c{position:absolute;width:152px;height:152px;animation:cw 8s linear infinite}
-.r2c{position:absolute;width:178px;height:178px;animation:ccw 13s linear infinite}
-.waveform{display:flex;align-items:center;gap:3px;height:32px}
-.wb{width:2px;background:var(--text2);height:4px;transition:height .1s}
-#voice-last{max-width:480px;text-align:center;background:var(--bg2);border:1px solid var(--border2);padding:12px 18px;font-size:13px;color:var(--text2);min-height:44px}
-#voice-last em{color:var(--text);font-style:normal}
-#wakeword-bar{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--border);padding:5px 14px;font-size:10px;font-family:var(--mono);color:var(--orange);display:none;align-items:center;gap:7px;z-index:90;letter-spacing:1px;text-transform:uppercase}
-#wakeword-bar.on{display:flex}
-.wk-dot{width:4px;height:4px;border-radius:50%;background:var(--orange);animation:blink-dot .8s ease infinite}
-
-/* ── Chat view ── */
-#chat-view{flex:1;overflow:hidden;display:flex;flex-direction:column;border-top:1px solid var(--border2);background:var(--bg3)}
-#chat-area{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth}
-#empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;padding:24px}
-#empty h2{font-family:var(--display);font-size:32px;font-weight:800;letter-spacing:4px;color:var(--accent);text-transform:uppercase;line-height:1.1}
-#empty p{font-size:14px;color:var(--text2);max-width:320px;line-height:1.7}
-.chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:4px}
-.chip{padding:6px 16px;background:transparent;border:1px solid var(--border2);border-radius:var(--r3);font-size:10px;color:var(--text2);cursor:pointer;font-family:var(--mono);letter-spacing:1.5px;text-transform:uppercase;transition:all .15s}
-.chip:hover{border-color:var(--border);color:var(--text);background:var(--accent-dim)}
-
-/* ── Messages ── */
-.msg{display:flex;gap:10px;max-width:88%;animation:pop-in .2s ease}
-@keyframes pop-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.msg.user{align-self:flex-end;flex-direction:row-reverse}
-.msg.assistant{align-self:flex-start}
-.avatar{width:28px;height:28px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;margin-top:2px;font-family:var(--mono)}
-.msg.assistant .avatar{background:var(--bg2);border:1px solid var(--border);color:var(--text2)}
-.msg.user .avatar{background:var(--accent);color:var(--bg)}
-.msg-body{display:flex;flex-direction:column;gap:3px;min-width:0}
-.bubble{padding:10px 14px;border-radius:var(--r);font-size:14px;line-height:1.65;word-break:break-word}
-.msg.assistant .bubble{background:var(--bg2);border:1px solid var(--border2);color:var(--text)}
-.msg.user .bubble{background:rgba(255,255,255,0.06);border:1px solid var(--border2);color:var(--text)}
-.msg-time{font-family:var(--mono);font-size:9px;color:var(--text3)}
-.msg.user .msg-time{text-align:right}
-.bubble pre{margin:8px 0;overflow:hidden;border:1px solid var(--border2);border-radius:var(--r2)}
-.bubble pre code{font-family:var(--mono);font-size:12px;line-height:1.5;display:block;overflow-x:auto}
-.code-header{display:flex;align-items:center;justify-content:space-between;padding:5px 10px;background:rgba(0,0,0,.5);border-bottom:1px solid var(--border2)}
-.code-lang{font-family:var(--mono);font-size:10px;color:var(--text2);letter-spacing:1px;text-transform:uppercase}
-.btn-copy{background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;padding:2px 6px;transition:color .15s;font-family:var(--mono)}
-.btn-copy:hover{color:var(--text)}
-.bubble code:not(pre code){background:rgba(255,255,255,.06);border:1px solid var(--border2);padding:1px 5px;font-family:var(--mono);font-size:12px;color:var(--text)}
-.bubble a{color:var(--text);text-decoration:underline;text-underline-offset:2px}.bubble a:hover{opacity:.7}
-
-/* ── Action cards ── */
-.action-card{align-self:center;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);padding:10px 14px;display:flex;align-items:flex-start;gap:10px;font-size:12px;animation:pop-in .2s ease;max-width:460px;width:100%}
-.action-icon{font-size:18px;flex-shrink:0;margin-top:1px}
-.action-content{flex:1;min-width:0}
-.action-title{font-weight:600;font-size:11px;color:var(--text);font-family:var(--mono);letter-spacing:1px;text-transform:uppercase}
-.action-sub{font-size:11px;color:var(--text2);margin-top:3px;font-family:var(--mono);line-height:1.45;word-break:break-word}
-.action-badge{display:inline-flex;align-items:center;gap:4px;margin-top:5px;padding:2px 10px;border-radius:var(--r3);font-size:10px;font-family:var(--mono);background:var(--accent-dim);color:var(--text2);border:1px solid var(--border2)}
-.action-badge.ok{color:var(--green)}
-.action-badge.fail{color:var(--danger)}
-.action-ok{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0;margin-top:6px}
-.action-ok.fail{background:var(--danger)}
-.script-out{margin-top:6px;padding:5px 8px;border-radius:6px;background:rgba(0,0,0,.5);font-family:var(--mono);font-size:10px;color:var(--text2);max-height:80px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
-.msg-preview{margin-top:6px;padding:6px 10px;background:rgba(0,0,0,.35);border-left:2px solid var(--text3);border-radius:0 6px 6px 0;font-size:11px;color:var(--text);font-family:var(--mono);white-space:pre-wrap;word-break:break-word}
-.socials-card{align-self:flex-start;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);padding:12px 16px;display:flex;flex-direction:column;gap:7px;animation:pop-in .2s ease}
-.socials-card-title{font-weight:700;font-size:11px;color:var(--text);font-family:var(--mono);letter-spacing:2px;text-transform:uppercase;margin-bottom:2px}
-.social-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);font-family:var(--mono)}
-.social-row a{color:var(--text);text-decoration:underline;text-underline-offset:2px}.social-row a:hover{opacity:.7}
-.model-notice{align-self:center;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r3);padding:3px 14px;font-size:10px;color:var(--text3);font-family:var(--mono);animation:pop-in .2s ease;letter-spacing:1px}
-.cursor{display:inline-block;width:2px;height:12px;background:var(--text2);margin-left:2px;vertical-align:middle;animation:cur .65s step-end infinite}
-@keyframes cur{0%,100%{opacity:1}50%{opacity:0}}
-
-/* ── Input bar ── */
-#input-bar{padding:10px 16px 16px;border-top:1px solid var(--border2);background:var(--bg);flex-shrink:0}
-.input-wrap{display:flex;align-items:flex-end;gap:8px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);padding:8px 8px 8px 16px;transition:border-color .15s}
-.input-wrap:focus-within{border-color:var(--border)}
-#user-input{flex:1;background:none;border:none;outline:none;font-family:var(--font);font-size:14px;color:var(--text);resize:none;max-height:100px;line-height:1.5;padding:4px 0}
-#user-input::placeholder{color:var(--text3)}
-.input-btns{display:flex;gap:6px;align-items:flex-end;padding-bottom:1px}
-.btn-send{width:36px;height:36px;border:1px solid var(--border);border-radius:10px;background:transparent;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .15s;flex-shrink:0}
-.btn-send:hover{background:var(--accent);color:var(--bg);border-color:var(--accent)}
-.btn-send:disabled{opacity:.25;cursor:not-allowed}
-.btn-mic{width:36px;height:36px;border:1px solid var(--border2);border-radius:10px;background:transparent;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .15s;flex-shrink:0}
-.btn-mic:hover{border-color:var(--border);color:var(--text)}
-.btn-mic.on{border-color:var(--orange);color:var(--orange)}
-@keyframes ring{0%{box-shadow:0 0 0 0 rgba(255,149,0,.3)}70%{box-shadow:0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent}}
-.input-meta{display:flex;align-items:center;justify-content:space-between;padding:5px 2px 0;font-size:10px;color:var(--text3);font-family:var(--mono)}
-
-/* ── Setup modal ── */
-#setup-modal{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.96);display:flex;align-items:center;justify-content:center;padding:24px}
-#setup-modal.hidden{display:none}
-.setup-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:40px 32px;max-width:480px;width:100%;display:flex;flex-direction:column;gap:24px}
-.setup-logo{font-family:var(--display);font-size:22px;font-weight:800;letter-spacing:7px;color:var(--accent);text-transform:uppercase}
-.setup-title{font-family:var(--display);font-size:16px;color:var(--text);letter-spacing:2px;font-weight:800;text-transform:uppercase}
-.setup-desc{font-size:13px;color:var(--text2);line-height:1.7;margin-top:4px}
-.setup-steps{display:flex;flex-direction:column;gap:10px}
-.setup-step{display:flex;gap:12px;align-items:flex-start;font-size:13px;color:var(--text2);line-height:1.55}
-.step-n{width:22px;height:22px;border-radius:50%;flex-shrink:0;margin-top:1px;background:transparent;border:1px solid var(--border);color:var(--text2);font-size:10px;font-weight:700;font-family:var(--mono);display:flex;align-items:center;justify-content:center}
-.setup-step a{color:var(--text);text-decoration:underline;text-underline-offset:2px}.setup-step code{color:var(--text);font-family:var(--mono);font-size:11px;background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px}
-.setup-field-group{display:flex;flex-direction:column;gap:8px}
-.setup-field-label{font-size:9px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:2px;font-family:var(--mono)}
-.setup-input{background:transparent;border:1px solid var(--border2);border-radius:var(--r2);padding:12px 14px;color:var(--text);font-family:var(--mono);font-size:13px;outline:none;width:100%;transition:border-color .15s}
-.setup-input:focus{border-color:var(--border)}
-.setup-hint{font-size:11px;color:var(--text3);line-height:1.5}
-.btn-primary{background:var(--accent);color:var(--bg);border:none;border-radius:var(--r2);padding:14px;font-size:12px;font-weight:800;cursor:pointer;width:100%;transition:opacity .15s;font-family:var(--display);letter-spacing:4px;text-transform:uppercase}
-.btn-primary:hover{opacity:.85}
-.btn-secondary{background:none;color:var(--text2);border:1px solid var(--border2);padding:11px;font-size:11px;cursor:pointer;width:100%;transition:all .15s;font-family:var(--mono);letter-spacing:1px;text-transform:uppercase}
-.btn-secondary:hover{color:var(--text);border-color:var(--border)}
-
-/* ── Settings panel ── */
-#settings-panel{position:fixed;inset:0;z-index:200;display:flex;align-items:flex-end;pointer-events:none;opacity:0}
-#settings-panel.open{pointer-events:all;opacity:1}
-.settings-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.7);transition:opacity .3s;opacity:0}
-#settings-panel.open .settings-backdrop{opacity:1}
-.settings-sheet{position:relative;z-index:1;width:100%;background:var(--bg2);border:1px solid var(--border2);border-bottom:none;border-radius:0;max-height:88dvh;overflow-y:auto;transform:translateY(100%);transition:transform .35s cubic-bezier(.34,1.2,.64,1)}
-#settings-panel.open .settings-sheet{transform:translateY(0)}
-.sheet-handle{width:32px;height:2px;background:var(--border);margin:14px auto 0}
-.sheet-header{display:flex;align-items:center;justify-content:space-between;padding:14px 22px 12px;border-bottom:1px solid var(--border2);position:sticky;top:0;background:var(--bg2);z-index:1}
-.sheet-header h2{font-family:var(--display);font-size:14px;font-weight:800;letter-spacing:5px;color:var(--accent);text-transform:uppercase}
-.sheet-body{padding:20px 22px 36px;display:flex;flex-direction:column;gap:18px}
-.sg{display:flex;flex-direction:column;gap:6px}
-.sl{font-size:9px;font-weight:500;color:var(--text2);text-transform:uppercase;letter-spacing:2px;font-family:var(--mono)}
-.si{background:transparent;border:1px solid var(--border2);border-radius:var(--r2);padding:9px 12px;color:var(--text);font-family:var(--mono);font-size:13px;outline:none;width:100%;transition:border-color .15s}
-.si:focus{border-color:var(--border)}
-.si-ta{resize:vertical;min-height:80px;line-height:1.55}
-.si-sel option{background:var(--bg2)}
-.sh{font-size:11px;color:var(--text3);line-height:1.4}
-.pills{display:flex;gap:6px}
-.pill{flex:1;padding:8px;border:1px solid var(--border2);border-radius:var(--r2);background:transparent;color:var(--text2);font-size:11px;font-weight:500;cursor:pointer;text-align:center;transition:all .15s;font-family:var(--mono);letter-spacing:1px;text-transform:uppercase}
-.pill.on{border-color:var(--border);background:var(--accent-dim);color:var(--text)}
-.toggle{position:relative;width:40px;height:22px;flex-shrink:0}
-.toggle input{opacity:0;width:0;height:0;position:absolute}
-.tslider{position:absolute;inset:0;background:var(--bg3);border:1px solid var(--border2);border-radius:11px;cursor:pointer;transition:all .15s}
-.tslider::before{content:'';position:absolute;width:16px;height:16px;border-radius:50%;background:var(--text3);top:2px;left:2px;transition:transform .2s}
-.toggle input:checked+.tslider{background:var(--accent-dim);border-color:var(--border)}
-.toggle input:checked+.tslider::before{transform:translateX(18px);background:var(--accent)}
-.sr{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.sdiv{height:1px;background:var(--border2)}
-.stitle{font-size:11px;font-weight:700;color:var(--text2);font-family:var(--mono);letter-spacing:2px;text-transform:uppercase}
-.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.sgi .sil{font-size:9px;color:var(--text3);font-family:var(--mono);margin-bottom:3px;text-transform:uppercase;letter-spacing:1px}
-.btn-save{background:var(--accent);color:var(--bg);border:none;border-radius:var(--r2);padding:13px;font-size:11px;font-weight:800;cursor:pointer;width:100%;transition:opacity .15s;font-family:var(--display);letter-spacing:4px;text-transform:uppercase;margin-top:4px}
-.btn-save:hover{opacity:.85}
-.btn-secondary{background:none;color:var(--text2);border:1px solid var(--border2);border-radius:var(--r2);padding:11px;font-size:11px;cursor:pointer;width:100%;transition:all .15s;font-family:var(--mono);letter-spacing:1px;text-transform:uppercase}
-.btn-secondary:hover{color:var(--text);border-color:var(--border)}
-.btn-danger{background:transparent;color:var(--danger);border:1px solid rgba(255,64,64,.2);border-radius:var(--r2);padding:10px;font-size:12px;font-weight:500;cursor:pointer;width:100%;transition:all .15s;font-family:var(--mono);letter-spacing:1px}
-.btn-danger:hover{background:rgba(255,64,64,.06)}
-#cf-list{display:flex;flex-direction:column;gap:3px;max-height:100px;overflow-y:auto;margin-bottom:4px}
-.cf-item{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:4px 10px;border-radius:8px;background:var(--bg3);border:1px solid var(--border2);font-size:11px;font-family:var(--mono);color:var(--text2)}
-.cf-item button{background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px}
-.cf-item button:hover{color:var(--danger)}
-.btn-add-path{background:none;border:1px dashed var(--border2);border-radius:var(--r2);padding:6px;color:var(--text3);cursor:pointer;font-family:var(--mono);font-size:11px;width:100%;transition:all .15s;letter-spacing:1px}
-.btn-add-path:hover{border-color:var(--border);color:var(--text2)}
-
-/* ── Toast ── */
-#toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(12px);background:var(--bg2);border:1px solid var(--border);border-radius:var(--r3);padding:8px 18px;font-size:11px;font-family:var(--mono);color:var(--text);pointer-events:none;opacity:0;z-index:400;transition:all .25s cubic-bezier(.34,1.4,.64,1);white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis;letter-spacing:1px}
-#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
-
-/* ── New user modal ── */
-#new-user-modal{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:24px}
-#new-user-modal.hidden{display:none}
-.nu-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:28px;width:100%;max-width:340px;display:flex;flex-direction:column;gap:16px}
-.nu-card h3{font-family:var(--display);font-size:15px;font-weight:800;letter-spacing:4px;color:var(--accent);text-transform:uppercase}
-
-@media(max-width:600px){
-  #app{grid-template-columns:0 1fr;grid-template-areas:"header header" "sidebar main"}
-  #sidebar{display:none}
-  #sidebar.mobile-open{display:flex;position:fixed;inset:0;z-index:100;width:80vw;max-width:260px}
-  #empty h2{font-size:24px}
+# ── Palette (matches index.html :root) ────────────────────────────────────────
+C = {
+    "bg":      "#0a0a0a",
+    "bg2":     "#111111",
+    "bg3":     "#161616",
+    "border":  "#1a1a1a",
+    "border2": "#0f0f0f",
+    "accent":  "#ffffff",
+    "text":    "#f0f0f0",
+    "text2":   "#888888",
+    "text3":   "#333333",
+    "green":   "#00cc6a",
+    "orange":  "#ff9500",
+    "danger":  "#ff4040",
 }
 
-/* ── Overlay widget ── */
-#overlay-widget{display:none;position:fixed;z-index:9000;min-width:280px;max-width:380px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);font-family:'Space Grotesk',sans-serif;overflow:hidden;resize:both;top:80px;right:20px}
-</style>
-</head>
-<body>
-
-<!-- Setup modal -->
-<div id="setup-modal" class="hidden">
-  <div class="setup-card">
-    <div class="setup-logo">KYROX</div>
-    <div>
-      <div class="setup-title">SYSTEM INITIALIZATION</div>
-      <div class="setup-desc">Kyrox needs an OpenRouter API key to connect. It's free and takes 30 seconds.</div>
-    </div>
-    <div class="setup-steps">
-      <div class="setup-step"><div class="step-n">1</div><span>Visit <a href="https://openrouter.ai" target="_blank">openrouter.ai</a> → Sign in → Create a free account</span></div>
-      <div class="setup-step"><div class="step-n">2</div><span>Avatar → <strong style="color:var(--text)">Keys</strong> → <strong style="color:var(--text)">Create Key</strong></span></div>
-      <div class="setup-step"><div class="step-n">3</div><span>Paste your key starting with <code>sk-or-v1-</code> below</span></div>
-    </div>
-    <div class="setup-field-group">
-      <div class="setup-field-label">API Key</div>
-      <input class="setup-input" id="setup-key" type="password" placeholder="sk-or-v1-…"/>
-      <div class="setup-hint">Stored locally on your machine. Never sent to anyone except OpenRouter.</div>
-    </div>
-    <button class="btn-primary" id="btn-setup-save">INITIALIZE KYROX</button>
-    <button class="btn-secondary" id="btn-setup-skip">Use local Ollama instead</button>
-  </div>
-</div>
-
-<!-- New user modal -->
-<div id="new-user-modal" class="hidden">
-  <div class="nu-card">
-    <h3>NEW PROFILE</h3>
-    <div class="setup-field-group">
-      <div class="setup-field-label">Display Name</div>
-      <input class="setup-input" id="nu-name" type="text" placeholder="Enter your name…" autocomplete="off"/>
-    </div>
-    <button class="btn-primary" id="btn-nu-create">CREATE PROFILE</button>
-    <button class="btn-secondary" id="btn-nu-cancel">Cancel</button>
-  </div>
-</div>
-
-<!-- Wakeword bar -->
-<div id="wakeword-bar">
-  <div class="wk-dot"></div>
-  <span id="wk-text">Listening for "Hey Kyrox"…</span>
-</div>
-
-<div id="app">
-  <header>
-    <div class="logo">KYROX</div>
-    <div class="header-center">
-      <div class="status-chip"><div class="dot" id="status-dot"></div><span id="status-label">CONNECTING</span></div>
-      <span class="model-tag" id="model-tag">—</span>
-    </div>
-    <div class="header-right">
-      <button class="btn-icon" id="btn-settings" title="Settings">⊙</button>
-    </div>
-  </header>
-
-  <div id="sidebar">
-    <div class="sidebar-section">
-      <div class="sidebar-label">Profiles</div>
-      <div id="user-list"></div>
-      <button class="btn-new-user" id="btn-new-user">+ New Profile</button>
-    </div>
-    <div class="sidebar-divider"></div>
-    <div class="sidebar-section">
-      <div class="sidebar-label">Chat</div>
-      <button class="btn-new-user" id="btn-new-chat" style="margin-bottom:0;border-color:rgba(255,255,255,0.12);color:var(--text2)" title="Start a new conversation without deleting your profile">+ New Chat</button>
-    </div>
-    <div class="sidebar-divider"></div>
-    <div class="sidebar-section">
-      <div class="sidebar-label">System</div>
-      <div class="stat-mini"><span class="stat-mini-label">Backend</span><span class="stat-mini-val" id="stat-backend">—</span></div>
-      <div class="stat-mini"><span class="stat-mini-label">Memory</span><span class="stat-mini-val" id="stat-memory">0 facts</span></div>
-      <div class="stat-mini"><span class="stat-mini-label">Voice</span><span class="stat-mini-val" id="stat-voice">—</span></div>
-    </div>
-    <div class="sidebar-divider"></div>
-    <div class="sidebar-section"><div class="sidebar-label">Memory</div></div>
-    <div id="sidebar-memory"></div>
-  </div>
-
-  <div id="main">
-    <div id="mode-tabs">
-      <button class="tab active" data-tab="chat">· Chat</button>
-      <button class="tab" data-tab="voice">◉ Voice</button>
-      <button class="tab" data-tab="news">◈ News</button>
-      <button class="btn-icon" id="btn-overlay" title="Screen overlay" style="margin-left:auto;margin-right:8px;margin-bottom:2px">⊡</button>
-    </div>
-
-    <!-- Chat tab -->
-    <div class="tab-content active" id="tab-chat">
-      <div id="chat-view">
-        <div id="chat-area"><div id="empty"></div></div>
-        <div id="input-bar">
-          <div class="input-wrap">
-            <textarea id="user-input" rows="1" placeholder="Message Kyrox…" autocomplete="off" spellcheck="false"></textarea>
-            <div class="input-btns">
-              <button class="btn-mic" id="btn-mic" title="Voice input">○</button>
-              <button class="btn-send" id="btn-send" title="Send">↑</button>
-            </div>
-          </div>
-          <div class="input-meta">
-            <span id="model-current">—</span>
-            <span id="voice-status"></span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- News tab -->
-    <div class="tab-content" id="tab-news">
-      <div id="news-view" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--border);background:var(--bg3)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-          <span style="font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--text2)">LATEST HEADLINES</span>
-          <button class="btn-icon" onclick="loadNews()" title="Refresh">↻</button>
-        </div>
-        <div id="news-list"><div style="font-family:var(--mono);font-size:11px;color:var(--text3);text-align:center;padding:40px">Click ↻ to load news…</div></div>
-      </div>
-    </div>
-
-    <!-- Voice tab -->
-    <div class="tab-content" id="tab-voice">
-      <div id="voice-view">
-        <div class="orb-wrap" id="orb-wrap" onclick="handleOrbClick()" title="Click to speak">
-          <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div>
-          <div class="r1c"><div class="ring-dot"></div></div>
-          <div class="r2c"><div class="ring-dot" style="background:var(--c);box-shadow:0 0 8px var(--c);top:auto;bottom:0;transform:translate(-50%,50%);transform-origin:center calc(50% + 96px)"></div></div>
-          <div class="orb" id="orb">
-            <div class="orb-label">KYROX</div>
-            <div class="orb-sub">TAP TO SPEAK</div>
-            <div class="orb-listen-text">LISTENING…</div>
-          </div>
-        </div>
-        <div class="waveform" id="waveform">
-          <div class="wb" style="height:4px"></div><div class="wb" style="height:9px"></div>
-          <div class="wb" style="height:16px"></div><div class="wb" style="height:6px"></div>
-          <div class="wb" style="height:22px"></div><div class="wb" style="height:11px"></div>
-          <div class="wb" style="height:18px"></div><div class="wb" style="height:5px"></div>
-          <div class="wb" style="height:13px"></div><div class="wb" style="height:8px"></div>
-          <div class="wb" style="height:20px"></div>
-        </div>
-        <div id="voice-last"><span style="color:var(--text3)">Say "Hey Kyrox" or tap the orb…</span></div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Settings panel -->
-<div id="settings-panel">
-  <div class="settings-backdrop" id="settings-backdrop"></div>
-  <div class="settings-sheet">
-    <div class="sheet-handle"></div>
-    <div class="sheet-header">
-      <h2>SETTINGS</h2>
-      <button class="btn-icon" id="settings-close">✕</button>
-    </div>
-    <div class="sheet-body">
-      <div class="sg"><div class="sl">AI Backend</div>
-        <div class="pills">
-          <div class="pill" id="pill-or" onclick="setBackend('openrouter')">↑ OpenRouter</div>
-          <div class="pill" id="pill-ol" onclick="setBackend('ollama')">◎ Ollama</div>
-        </div>
-      </div>
-      <div id="sec-or">
-        <div class="sg"><div class="sl">OpenRouter API Key</div><input class="si" id="s-or-key" type="password" placeholder="sk-or-v1-…"/></div>
-      </div>
-      <div id="sec-ol" style="display:none">
-        <div class="sg" style="margin-bottom:10px"><div class="sl">Ollama URL</div><input class="si" id="s-ol-url" type="text" placeholder="http://localhost:11434"/></div>
-        <div class="sg"><div class="sl">Ollama Model</div><input class="si" id="s-ol-model" type="text" placeholder="llama3"/></div>
-      </div>
-      <div class="sdiv"></div>
-      <div class="stitle">PERSONALITY</div>
-      <div class="sg"><div class="sl">System Prompt</div><textarea class="si si-ta" id="s-prompt"></textarea></div>
-      <div class="sdiv"></div>
-      <div class="stitle">VOICE</div>
-      <div class="sg">
-        <div class="sl">Wake Word</div>
-        <input class="si" id="s-wakeword" type="text" placeholder="hey kyrox"/>
-        <div class="sh">Say this anywhere to activate Kyrox hands-free.</div>
-      </div>
-      <div class="sg">
-        <div class="sr">
-          <div><div class="sl" style="margin-bottom:2px">Voice Responses (TTS)</div></div>
-          <label class="toggle"><input type="checkbox" id="s-tts" checked/><span class="tslider"></span></label>
-        </div>
-      </div>
-      <div class="sg">
-        <div class="sl">Voice Selection</div>
-        <select class="si si-sel" id="s-voice-name">
-          <option value="">Default (browser auto-select)</option>
-        </select>
-      </div>
-      <div class="sg">
-        <div class="sl">Speech Rate</div>
-        <input class="si" id="s-voice-rate" type="range" min="0.5" max="2" step="0.05" value="1.05" style="padding:4px 0"/>
-        <div class="sh" id="voice-rate-label">Rate: 1.05×</div>
-      </div>
-      <div class="sdiv"></div>
-      <div class="stitle">CONTEXT FILES</div>
-      <div class="sh" style="margin-bottom:8px">Kyrox reads these .md / .txt files at startup to understand your PC & projects.</div>
-      <div id="cf-list"></div>
-      <div style="display:flex;gap:7px">
-        <input class="si" id="cf-path-input" type="text" placeholder="/path/to/file.md or folder/" style="flex:1"/>
-        <button class="btn-primary" style="width:auto;padding:8px 14px;font-size:11px" onclick="addContextPath()">ADD</button>
-      </div>
-      <button class="btn-add-path" onclick="scanContextNow()">🔄 Re-scan context files</button>
-      <div class="sdiv"></div>
-      <div class="stitle">SOCIALS</div>
-      <div class="sgrid">
-        <div class="sgi"><div class="sil">Twitch</div><input class="si" id="s-twitch" type="text" placeholder="https://twitch.tv/…"/></div>
-        <div class="sgi"><div class="sil">Twitter/X</div><input class="si" id="s-twitter" type="text" placeholder="https://x.com/…"/></div>
-        <div class="sgi"><div class="sil">Instagram</div><input class="si" id="s-ig" type="text" placeholder="https://instagram.com/…"/></div>
-        <div class="sgi"><div class="sil">YouTube</div><input class="si" id="s-yt" type="text" placeholder="https://youtube.com/…"/></div>
-        <div class="sgi"><div class="sil">Discord</div><input class="si" id="s-dc" type="text" placeholder="https://discord.gg/…"/></div>
-        <div class="sgi"><div class="sil">GitHub</div><input class="si" id="s-gh" type="text" placeholder="https://github.com/…"/></div>
-      </div>
-      <button class="btn-save" id="btn-save-settings">SAVE SETTINGS</button>
-      <div class="sdiv"></div>
-      <div class="stitle">MEMORY</div>
-      <div id="settings-memory-list"></div>
-      <button class="btn-danger" id="btn-clear-memory" style="margin-top:8px">🗑 Clear All Memory</button>
-      <div class="sdiv"></div>
-      <button class="btn-danger" id="btn-clear-history">🗑 Clear Conversation</button>
-    </div>
-  </div>
-</div>
-
-<div id="toast"></div>
-
-<!-- Overlay widget -->
-<div id="overlay-widget">
-  <div id="overlay-drag" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:move;background:var(--bg2);border-bottom:1px solid rgba(255,255,255,0.06);user-select:none">
-    <span style="font-family:'Syne',sans-serif;font-size:11px;font-weight:800;letter-spacing:4px;color:#f0f0f0;text-transform:uppercase">KYROX LENS</span>
-    <div style="display:flex;gap:6px;align-items:center">
-      <button onclick="captureAndAsk()" style="background:transparent;border:1px solid rgba(255,255,255,0.15);color:#888;padding:3px 10px;font-size:10px;cursor:pointer;font-family:'Space Mono',monospace;letter-spacing:1px;text-transform:uppercase">SCAN</button>
-      <button onclick="closeOverlay()" style="background:none;border:none;color:#555;cursor:pointer;font-size:16px;padding:0 2px">✕</button>
-    </div>
-  </div>
-  <div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px">
-    <textarea id="overlay-input" placeholder="Ask about your screen…" style="background:transparent;border:1px solid rgba(255,255,255,0.08);padding:8px 10px;color:#f0f0f0;font-size:13px;font-family:'Space Grotesk',sans-serif;resize:none;height:60px;outline:none;width:100%;box-sizing:border-box"></textarea>
-    <button onclick="overlayAsk()" style="background:#fff;color:#0a0a0a;border:none;padding:9px;font-size:11px;font-family:'Syne',sans-serif;font-weight:800;letter-spacing:3px;cursor:pointer;text-transform:uppercase">ASK KYROX</button>
-    <div id="overlay-response" style="font-size:12px;color:#f0f0f0;line-height:1.6;min-height:40px;background:rgba(0,0,0,0.3);padding:8px 10px;font-family:'Space Grotesk',sans-serif;display:none;max-height:200px;overflow-y:auto"></div>
-  </div>
-</div>
-
-<script>
-'use strict';
-
-// ── State ──────────────────────────────────────────────────────────────────
-let ws = null, isStreaming = false;
-let streamBubble = null, streamDiv = null, streamBuffer = '';
-let settings = {}, memory = {facts:[],preferences:{}};
-let currentUser = null, users = [];
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-const voiceOk = !!SR;
-let voiceRec = null, wakeRec = null, wakeActive = false;
-let isListening = false, isSpeaking = false, waveTimer = null;
-
-// ── Init ───────────────────────────────────────────────────────────────────
-async function init() {
-  await loadSettings();
-  await loadUsers();
-  if (!currentUser) {
-    if (users.length) selectUser(users[0].id);
-    else openNewUser();
-  }
-  renderEmptyState();
-  initVoice();
-  connectWS();
-  if (window.speechSynthesis) {
-    window.speechSynthesis.getVoices();
-    const cacheVoices = () => {
-      const voices = window.speechSynthesis.getVoices();
-      if (voices.length) {
-        fetch('/api/cache-voices', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ voices: voices.map(v => v.name) })
-        }).catch(()=>{});
-      }
-    };
-    window.speechSynthesis.addEventListener('voiceschanged', () => {
-      window.speechSynthesis.getVoices();
-      cacheVoices();
-    });
-    cacheVoices();
-  }
-}
-
-// ── Settings ───────────────────────────────────────────────────────────────
-async function loadSettings() {
-  try {
-    const [sr, mr] = await Promise.all([
-      fetch('/api/settings').then(r=>r.json()),
-      currentUser ? fetch(`/api/memory/${currentUser}`).then(r=>r.json()) : Promise.resolve({facts:[],preferences:{}})
-    ]);
-    settings = sr; memory = mr;
-    updateStatusUI(); updateSidebarMemory(); loadSettingsIntoPanel(sr);
-    if (!sr.openrouter_key && sr.backend !== 'ollama')
-      document.getElementById('setup-modal').classList.remove('hidden');
-  } catch(e) {}
-}
-
-async function loadUsers() {
-  try { const u = await fetch('/api/users').then(r=>r.json()); users=u; renderUserList(); }
-  catch(e) {}
-}
-
-function updateStatusUI() {
-  const dot=document.getElementById('status-dot'), label=document.getElementById('status-label');
-  if (settings.backend==='ollama') {
-    dot.className='dot on'; label.textContent='OLLAMA';
-    document.getElementById('stat-backend').textContent='OLLAMA';
-  } else if (settings.openrouter_key) {
-    dot.className='dot on'; label.textContent='OPENROUTER';
-    document.getElementById('stat-backend').textContent='OPENROUTER';
-  } else {
-    dot.className='dot err'; label.textContent='NO KEY';
-  }
-  const model=(settings.current_model||'').split('/').pop()||'—';
-  document.getElementById('model-tag').textContent=model;
-  document.getElementById('model-current').textContent=settings.current_model||'—';
-}
-
-// ── Users ──────────────────────────────────────────────────────────────────
-function renderUserList() {
-  const el=document.getElementById('user-list'); el.innerHTML='';
-  users.forEach(u=>{
-    const d=document.createElement('div'); d.className='user-item'+(u.id===currentUser?' active':'');
-    d.innerHTML=`<div class="user-avatar">${u.id.slice(0,2).toUpperCase()}</div><div class="user-name">${esc(u.name)}</div>`;
-    d.onclick=()=>selectUser(u.id); el.appendChild(d);
-  });
-}
-
-async function selectUser(uid) {
-  currentUser=uid; renderUserList();
-  memory=await fetch(`/api/memory/${uid}`).then(r=>r.json());
-  updateSidebarMemory(); await loadHistory();
-  if(ws&&ws.readyState===1){ws.close();connectWS();}
-}
-
-function openNewUser() {
-  document.getElementById('new-user-modal').classList.remove('hidden');
-  document.getElementById('nu-name').value='';
-  setTimeout(()=>document.getElementById('nu-name').focus(),100);
-}
-
-document.getElementById('btn-new-user').addEventListener('click',openNewUser);
-document.getElementById('btn-new-chat').addEventListener('click',()=>{
-  if(!ws||ws.readyState!==1){toast('Not connected');return;}
-  ws.send(JSON.stringify({action:'new_chat'}));
-  activateTab('chat');
-});
-document.getElementById('btn-nu-cancel').addEventListener('click',()=>document.getElementById('new-user-modal').classList.add('hidden'));
-document.getElementById('btn-nu-create').addEventListener('click',async()=>{
-  const name=document.getElementById('nu-name').value.trim(); if(!name)return;
-  const uid='u_'+Date.now().toString(36);
-  await fetch(`/api/memory/${uid}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({facts:[`User's name is ${name}`]})});
-  document.getElementById('new-user-modal').classList.add('hidden');
-  await loadUsers(); selectUser(uid); toast(`✓ Profile "${name}" created`);
-});
-
-// ── Memory sidebar ─────────────────────────────────────────────────────────
-function updateSidebarMemory() {
-  const facts=memory.facts||[];
-  document.getElementById('stat-memory').textContent=`${facts.length} fact${facts.length!==1?'s':''}`;
-  const el=document.getElementById('sidebar-memory'); el.innerHTML='';
-  if(!facts.length){el.innerHTML='<div style="font-size:11px;color:var(--text3);font-family:var(--mono);padding:0 14px 8px">No memory yet.</div>';return;}
-  facts.forEach((f,i)=>{
-    const d=document.createElement('div'); d.className='fact-chip';
-    d.innerHTML=`<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f)}</span><button onclick="deleteFact(${i})" title="Delete">✕</button>`;
-    el.appendChild(d);
-  });
-}
-
-async function deleteFact(i) {
-  const facts=[...(memory.facts||[])]; facts.splice(i,1);
-  await fetch(`/api/memory/${currentUser}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({facts})});
-  memory.facts=facts; updateSidebarMemory();
-}
-
-function renderSettingsMemory() {
-  const el=document.getElementById('settings-memory-list'); if(!el)return;
-  const facts=memory.facts||[]; el.innerHTML='';
-  if(!facts.length){el.innerHTML='<div style="font-size:11px;color:var(--text3);font-family:var(--mono);padding:4px">No memory yet.</div>';return;}
-  facts.forEach((f,i)=>{
-    const d=document.createElement('div'); d.className='fact-chip';
-    d.innerHTML=`<span style="flex:1">${esc(f)}</span><button onclick="deleteFact(${i});renderSettingsMemory()">✕</button>`;
-    el.appendChild(d);
-  });
-}
-
-// ── WebSocket ──────────────────────────────────────────────────────────────
-function connectWS() {
-  if(!currentUser)return;
-  const proto=location.protocol==='https:'?'wss':'ws';
-  ws=new WebSocket(`${proto}://${location.host}/ws/chat/${currentUser}`);
-  ws.onopen=()=>{};
-  ws.onclose=()=>setTimeout(connectWS,2500);
-  ws.onmessage=e=>handleWS(JSON.parse(e.data));
-}
-
-function handleWS(msg) {
-  switch(msg.type) {
-    case 'model_info':
-      document.getElementById('model-current').textContent=msg.model;
-      document.getElementById('model-tag').textContent=msg.model.split('/').pop(); break;
-    case 'model_switch': addModelNotice(msg.from); break;
-    case 'token': appendToken(msg.content); break;
-    // ── ACTIONS: the server already ran execute_pc_action and returns results ──
-    case 'actions': displayActionResults(msg.actions, msg.results||{}); break;
-    case 'done': finalizeDone(msg.content, msg.voice||''); break;
-    case 'error':
-      if(msg.content==='no_api_key'){
-        document.getElementById('setup-modal').classList.remove('hidden');
-        isStreaming=false; setBtnState(false);
-        if(streamDiv){streamDiv.remove();streamDiv=null;}
-      } else showError(msg.content); break;
-    case 'cleared':
-      document.getElementById('chat-area').innerHTML=''; renderEmptyState(); toast('Conversation cleared'); break;
-    case 'new_chat':
-      document.getElementById('chat-area').innerHTML=''; renderEmptyState(); toast('New chat started'); break;
-    case 'learned':
-      fetch(`/api/memory/${currentUser}`).then(r=>r.json()).then(m=>{memory=m;updateSidebarMemory();}); break;
-  }
-}
-
-// ── Client-side action execution (runs on the user's own machine) ─────────
-const APP_ICONS = {
-  open: '→', search: '◎', run_script: '»', read_file: '↗', 
-  write_file: '↙', send_message: '↑', send_socials: '◈', list_files: '≡',
-};
-const MSG_APP_ICONS = {discord:'💜', telegram:'✈️', whatsapp:'💚', slack:'#'};
-const SOCIAL_ICONS  = {twitch:'◉',twitter:'◈',instagram:'○',youtube:'▷',discord:'◎',github:'◇'};
-
-// App protocol map for client-side open
-const APP_PROTOCOLS_CLIENT = {
-  steam: 'steam://open/main', spotify: 'spotify:', discord: 'discord:',
-  telegram: 'tg:', whatsapp: 'https://web.whatsapp.com', slack: 'slack:',
-  vscode: 'vscode:', chrome: 'googlechrome:', firefox: 'firefox:',
-};
-const KNOWN_SITES_CLIENT = {
-  youtube:'https://youtube.com', google:'https://google.com',
-  facebook:'https://facebook.com', twitter:'https://twitter.com',
-  instagram:'https://instagram.com', github:'https://github.com',
-  netflix:'https://netflix.com', twitch:'https://twitch.tv',
-  reddit:'https://reddit.com', discord:'https://discord.com',
-  spotify:'https://open.spotify.com', amazon:'https://amazon.com',
-  wikipedia:'https://wikipedia.org', stackoverflow:'https://stackoverflow.com',
-  chatgpt:'https://chat.openai.com', claude:'https://claude.ai',
-  steam:'steam://open/main', telegram:'tg:', whatsapp:'https://web.whatsapp.com',
-  slack:'slack:',
-};
-
-function executeActionClient(act) {
-  const type = act.type;
-
-  // ── open ──
-  if (type === 'open') {
-    let target = (act.target || '').trim();
-    const tl = target.toLowerCase().trim();
-
-    // Pure HTTP/HTTPS URLs → open in browser tab directly
-    if (target.startsWith('http://') || target.startsWith('https://')) {
-      window.open(target, '_blank');
-      return {ok:true, message:`Opened ${act.label||target}`, client:true};
-    }
-
-    // Known websites by name → open directly as URL
-    if (KNOWN_SITES_CLIENT[tl]) {
-      const url = KNOWN_SITES_CLIENT[tl];
-      if (url.startsWith('http')) {
-        window.open(url, '_blank');
-        return {ok:true, message:`Opened ${tl}`, client:true};
-      }
-      // Protocol URI (discord:, steam://, tg:, …) — try window.open, then let server handle it
-      try { window.open(url, '_blank'); } catch(e) {}
-      return {ok:true, message:`Launched ${tl}`, client:true};
-    }
-
-    // Known app protocols (discord:, steam://, spotify:, …) — use window.location to trigger OS
-    if (APP_PROTOCOLS_CLIENT[tl]) {
-      const proto = APP_PROTOCOLS_CLIENT[tl];
-      if (proto.startsWith('http')) {
-        window.open(proto, '_blank');
-      } else {
-        // Use hidden iframe trick to avoid navigation for protocol URIs
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        document.body.appendChild(iframe);
-        try { iframe.src = proto; } catch(e) {}
-        setTimeout(()=>{ try { document.body.removeChild(iframe); } catch(e){} }, 2000);
-      }
-      return {ok:true, message:`Launched ${tl}`, client:true};
-    }
-
-    // Has a dot → treat as URL
-    if (target.includes('.')) {
-      window.open(target.startsWith('http') ? target : 'https://'+target, '_blank');
-      return {ok:true, message:`Opened ${target}`, client:true};
-    }
-
-    // Protocol URI passed directly (e.g. "vscode:")
-    if (target.includes('://') || (target.endsWith(':') && target.length > 2)) {
-      const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      document.body.appendChild(iframe);
-      try { iframe.src = target; } catch(e) {}
-      setTimeout(()=>{ try { document.body.removeChild(iframe); } catch(e){} }, 2000);
-      return {ok:true, message:`Launched ${act.label||target}`, client:true};
-    }
-
-    // Fallback: try as .com
-    window.open('https://'+target+'.com', '_blank');
-    return {ok:true, message:`Opened ${target}`, client:true};
-  }
-
-  // ── search ──
-  if (type === 'search') {
-    const q = act.query || act.target || '';
-    window.open('https://www.google.com/search?q='+encodeURIComponent(q), '_blank');
-    return {ok:true, message:`Searched: ${q}`, client:true};
-  }
-
-  // ── send_message ── open the app, show instructions
-  if (type === 'send_message') {
-    const app = (act.app||'').toLowerCase();
-    const protocols = {discord:'discord:', telegram:'tg:', whatsapp:'https://web.whatsapp.com', slack:'slack:'};
-    if (protocols[app]) window.open(protocols[app], '_blank');
-    return {
-      ok: true,
-      message: `${act.app} opened — find ${act.recipient} and send: "${act.message}"`,
-      automated: false,
-      client: true,
-    };
-  }
-
-  // ── write_file ── download as a file in the browser
-  if (type === 'write_file') {
-    const path = act.path || 'kyrox_file.txt';
-    const filename = path.split(/[\\/]/).pop() || 'kyrox_file.txt';
-    const content = act.content || '';
-    try {
-      const blob = new Blob([content], {type:'text/plain'});
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = filename;
-      document.body.appendChild(a); a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(a.href);
-      return {ok:true, message:`File downloaded: ${filename} (${content.length} chars)`, client:true};
-    } catch(e) {
-      return {ok:false, message:`Could not download file: ${e.message}`, client:true};
-    }
-  }
-
-  // ── send_socials ──
-  if (type === 'send_socials') { showSocialsCard(); return null; }
-
-  // For read_file, run_script, list_files — these need the server (local PC only)
-  // Return null to fall back to server result
-  return null;
-}
-
-function displayActionResults(actions, results) {
-  for (const act of actions) {
-    if (act.type === 'send_socials') { showSocialsCard(); continue; }
-
-    // Try to execute client-side first (works for all remote users)
-    const clientRes = executeActionClient(act);
-    if (clientRes) {
-      addActionCard(act, clientRes);
-    } else {
-      // Fall back to server result (read_file, run_script — only works locally)
-      const res = results[act.type] || {ok:true, message:'Executed'};
-      addActionCard(act, res);
-    }
-  }
-}
-
-function addActionCard(action, result) {
-  const area = document.getElementById('chat-area');
-  removeEmptyState();
-  const d = document.createElement('div');
-  d.className = 'action-card';
-  const icon = APP_ICONS[action.type] || '⚡';
-  const ok   = result.ok !== false;
-
-  let title = '', sub = '', extra = '';
-
-  if (action.type === 'open') {
-    title = `OPEN: ${esc(action.label || action.target || '')}`;
-    sub   = ok ? `Launched successfully` : esc(result.message||'Failed');
-
-  } else if (action.type === 'send_message') {
-    const appIcon = MSG_APP_ICONS[action.app] || '·';
-    title = `${appIcon} MESSAGE → ${esc(action.recipient||'')} via ${esc((action.app||'').toUpperCase())}`;
-    const automated = result.automated === true;
-    sub   = ok ? (automated ? 'Sent automatically' : 'App opened — send manually') : esc(result.message||'Failed');
-    if (action.message) {
-      extra = `<div class="msg-preview">${esc(action.message)}</div>`;
-    }
-    if (!automated && ok) {
-      extra += `<div class="action-badge" style="margin-top:6px">💡 pip install pyautogui for full automation</div>`;
-    }
-
-  } else if (action.type === 'run_script') {
-    title = `SCRIPT: ${esc((action.lang||'python').toUpperCase())}`;
-    sub   = ok ? 'Executed' : 'Failed';
-    if (result.message) extra = `<div class="script-out">${esc(result.message.slice(0,600))}</div>`;
-
-  } else if (action.type === 'write_file') {
-    const filename = (action.path||'file').split(/[\\/]/).pop();
-    title = `WRITE FILE: ${esc(filename)}`;
-    sub   = result.client ? `✓ Downloaded to your machine` : esc(result.message||'');
-
-  } else if (action.type === 'search') {
-    title = `SEARCH: ${esc(action.query||'')}`;
-    sub   = 'Opened in browser';
-
-  } else {
-    title = esc((action.type||'').toUpperCase());
-    sub   = esc(result.message||'');
-  }
-
-  d.innerHTML = `
-    <div class="action-icon">${icon}</div>
-    <div class="action-content">
-      <div class="action-title">${title}</div>
-      <div class="action-sub">${sub}</div>
-      ${extra}
-    </div>
-    <div class="action-ok ${ok?'':'fail'}"></div>`;
-  area.appendChild(d);
-  scrollBottom();
-}
-
-function showSocialsCard() {
-  const soc = settings.socials||{};
-  const filled = Object.entries(soc).filter(([,v])=>v&&v.trim());
-  if(!filled.length){toast('No socials configured');return;}
-  removeEmptyState();
-  const area=document.getElementById('chat-area');
-  const d=document.createElement('div'); d.className='socials-card';
-  d.innerHTML=`<div class="socials-card-title">SOCIALS</div>`+filled.map(([k,v])=>`<div class="social-row">${SOCIAL_ICONS[k]||'🔗'} <span style="color:var(--text)">${k.toUpperCase()}:</span>&nbsp;<a href="${v}" target="_blank">${v}</a></div>`).join('');
-  area.appendChild(d); scrollBottom();
-}
-
-// ── Chat messages ──────────────────────────────────────────────────────────
-function renderEmptyState() {
-  const area=document.getElementById('chat-area');
-  const name=(users.find(u=>u.id===currentUser)||{}).name||'there';
-  area.innerHTML=`
-  <div id="empty">
-    <h2>YOUR AI.<br>RUNS HERE.</h2>
-    <p>Hey ${esc(name)}. What do you need?</p>
-    <div class="chips">
-      <div class="chip" onclick="sendChip('What can you do?')">Capabilities</div>
-      <div class="chip" onclick="sendChip('Open YouTube')">Open YouTube</div>
-      <div class="chip" onclick="sendChip('Open Discord')">Open Discord</div>
-      <div class="chip" onclick="sendChip('Send a message to John on Discord: hey are you there?')">Send message</div>
-      <div class="chip" onclick="sendChip('Write a Python script to list my desktop files')">Run script</div>
-      <div class="chip" onclick="sendChip('Look at my screen')">Screen capture</div>
-    </div>
-  </div>`;
-}
-
-function removeEmptyState(){const e=document.getElementById('empty');if(e)e.remove();}
-
-function addUserMsg(text) {
-  removeEmptyState();
-  const area=document.getElementById('chat-area');
-  const d=document.createElement('div'); d.className='msg user';
-  d.innerHTML=`<div class="avatar">U</div><div class="msg-body"><div class="bubble">${esc(text)}</div><div class="msg-time">${timeNow()}</div></div>`;
-  area.appendChild(d); scrollBottom();
-}
-
-function startAssistantMsg() {
-  const area=document.getElementById('chat-area');
-  const d=document.createElement('div'); d.className='msg assistant';
-  d.innerHTML=`<div class="avatar">K</div><div class="msg-body"><div class="bubble"><span class="stream-text"></span><span class="cursor"></span></div><div class="msg-time">${timeNow()}</div></div>`;
-  area.appendChild(d);
-  streamDiv=d; streamBubble=d.querySelector('.stream-text'); scrollBottom();
-}
-
-function addModelNotice(from) {
-  const d=document.createElement('div'); d.className='model-notice';
-  d.textContent=`⚡ Rate limit on ${from.split('/').pop()} — switching model`;
-  document.getElementById('chat-area').appendChild(d); scrollBottom();
-}
-
-function appendToken(token) {
-  if(!streamDiv)startAssistantMsg();
-  streamBuffer+=token;
-  if(streamBubble){streamBubble.textContent=streamBuffer;scrollBottom();}
-}
-
-function finalizeDone(clean, voiceOverride) {
-  isStreaming=false; setBtnState(false);
-  if(streamDiv){
-    const cur=streamDiv.querySelector('.cursor'); if(cur)cur.remove();
-    const bubble=streamDiv.querySelector('.bubble');
-    if(bubble)bubble.innerHTML=renderMarkdown(clean);
-    hljs.highlightAll();
-    if(settings.tts!==false)speakText(clean, voiceOverride||'');
-  }
-  streamDiv=null; streamBubble=null; streamBuffer='';
-  scrollBottom();
-  document.getElementById('voice-last').innerHTML=`<em>${esc(clean.slice(0,180))}${clean.length>180?'…':''}</em>`;
-  if(window._overlayPending){
-    const respEl=document.getElementById('overlay-response');
-    if(respEl){respEl.style.display='block';respEl.textContent=clean.slice(0,600)+(clean.length>600?'..':'');}
-    window._overlayPending=false;
-  }
-}
-
-function showError(msg) {
-  isStreaming=false; setBtnState(false);
-  toast('⚠ '+msg,5000);
-  if(streamDiv){
-    const cur=streamDiv.querySelector('.cursor'); if(cur)cur.remove();
-    if(streamBubble){streamBubble.style.color='var(--danger)';streamBubble.textContent=msg;}
-  }
-  streamDiv=null; streamBubble=null; streamBuffer='';
-}
-
-// ── Send ───────────────────────────────────────────────────────────────────
-function sendMessage(text) {
-  if(!text.trim()||isStreaming||!ws||ws.readyState!==1)return;
-  addUserMsg(text); isStreaming=true; setBtnState(true);
-  streamBuffer=''; startAssistantMsg();
-  ws.send(JSON.stringify({action:'chat',message:text}));
-}
-
-function sendChip(text){document.getElementById('user-input').value=text;send();}
-
-function send() {
-  const el=document.getElementById('user-input');
-  const text=el.value.trim(); if(!text)return;
-  el.value=''; el.style.height='auto';
-  sendMessage(text); activateTab('chat');
-}
-
-function setBtnState(on){document.getElementById('btn-send').disabled=on;}
-
-const inputEl=document.getElementById('user-input');
-inputEl.addEventListener('input',()=>{inputEl.style.height='auto';inputEl.style.height=Math.min(inputEl.scrollHeight,100)+'px';});
-inputEl.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
-document.getElementById('btn-send').addEventListener('click',send);
-
-// ── History ────────────────────────────────────────────────────────────────
-async function loadHistory() {
-  if(!currentUser)return;
-  try {
-    const history=await fetch(`/api/history/${currentUser}`).then(r=>r.json());
-    const area=document.getElementById('chat-area'); area.innerHTML='';
-    if(!history.length){renderEmptyState();return;}
-    history.forEach(m=>{
-      const d=document.createElement('div'); d.className=`msg ${m.role==='user'?'user':'assistant'}`;
-      d.style.animation='none';
-      const content=m.role==='assistant'?renderMarkdown(m.content):esc(m.content);
-      d.innerHTML=`<div class="avatar">${m.role==='user'?'U':'K'}</div><div class="msg-body"><div class="bubble">${content}</div></div>`;
-      area.appendChild(d);
-    });
-    hljs.highlightAll(); scrollBottom();
-  } catch(e){}
-}
-
-// ── Markdown ───────────────────────────────────────────────────────────────
-function renderMarkdown(text) {
-  text=text.replace(/```action[\s\S]*?```/g,'');
-  text=text.replace(/```(\w+)?\n?([\s\S]*?)```/g,(_,lang,code)=>{
-    const l=lang||'text';
-    const hi=hljs.getLanguage(l)?hljs.highlight(code.trim(),{language:l}).value:hljs.highlightAuto(code.trim()).value;
-    const id='c'+Math.random().toString(36).slice(2,8);
-    return `<div><div class="code-header"><span class="code-lang">${l}</span><button class="btn-copy" onclick="copyCode('${id}')">Copy</button></div><pre><code id="${id}">${hi}</code></pre></div>`;
-  });
-  text=text.replace(/`([^`]+)`/g,'<code>$1</code>');
-  text=text.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
-  text=text.replace(/\*(.+?)\*/g,'<em>$1</em>');
-  text=text.replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" target="_blank">$1</a>');
-  text=text.replace(/\n/g,'<br>');
-  return text;
-}
-function copyCode(id){const el=document.getElementById(id);if(!el)return;navigator.clipboard.writeText(el.textContent).then(()=>toast('✓ Copied'));}
-
-// ── Tabs ───────────────────────────────────────────────────────────────────
-function activateTab(name) {
-  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
-  document.querySelectorAll('.tab-content').forEach(c=>c.classList.toggle('active',c.id==='tab-'+name));
-  if(name==='news'){const list=document.getElementById('news-list');if(list&&list.children.length<=1)loadNews();}
-}
-document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>activateTab(t.dataset.tab)));
-
-// ── Voice ──────────────────────────────────────────────────────────────────
-function updateVoiceStatus(msg){document.getElementById('voice-status').textContent=msg;document.getElementById('stat-voice').textContent=msg||(voiceOk?'READY':'N/A');}
-function setListenState(on){
-  isListening=on;
-  const orb=document.getElementById('orb'),mic=document.getElementById('btn-mic'),dot=document.getElementById('status-dot');
-  if(on){orb.classList.add('listening');mic.classList.add('on');dot.className='dot listen';startWave();}
-  else{orb.classList.remove('listening');mic.classList.remove('on');restoreDot();stopWave();}
-}
-function setSpeakState(on){isSpeaking=on;document.getElementById('orb').classList.toggle('speaking',on);}
-function startWave(){const bars=document.querySelectorAll('.wb');waveTimer=setInterval(()=>bars.forEach(b=>{b.style.height=(Math.random()*22+3)+'px';}),110);}
-function stopWave(){clearInterval(waveTimer);const def=[4,9,16,6,22,11,18,5,13,8,20];document.querySelectorAll('.wb').forEach((b,i)=>{b.style.height=def[i]+'px';});}
-function restoreDot(){const dot=document.getElementById('status-dot');dot.className=(settings.openrouter_key||settings.backend==='ollama')?'dot on':'dot err';}
-function handleOrbClick(){if(isListening)stopListen();else startManualListen();}
-function stopListen(){if(voiceRec){try{voiceRec.abort();}catch(e){}voiceRec=null;}setListenState(false);updateVoiceStatus('');}
-
-function startManualListen() {
-  if(!voiceOk){toast('Voice not supported in this browser');return;}
-  if(isSpeaking)window.speechSynthesis.cancel();
-  setListenState(true);updateVoiceStatus('Listening…');
-  const rec=new SR();rec.lang=navigator.language||'en-US';rec.continuous=false;rec.interimResults=false;rec.maxAlternatives=1;
-  rec.onresult=e=>{const t=e.results[0][0].transcript.trim();setListenState(false);updateVoiceStatus('');voiceRec=null;if(t){document.getElementById('user-input').value=t;document.getElementById('voice-last').innerHTML=`You: <em>${esc(t)}</em>`;send();}};
-  rec.onerror=e=>{setListenState(false);updateVoiceStatus('');voiceRec=null;if(e.error==='not-allowed')toast('⚠ Mic blocked');else if(e.error!=='no-speech'&&e.error!=='aborted')toast('Voice error: '+e.error);if(wakeActive)setTimeout(startWakeLoop,600);};
-  rec.onend=()=>{if(isListening){setListenState(false);updateVoiceStatus('');voiceRec=null;}};
-  try{rec.start();voiceRec=rec;}catch(e){setListenState(false);toast('Mic error: '+e.message);}
-}
-
-document.getElementById('btn-mic').addEventListener('click',()=>{if(isListening)stopListen();else{stopWakeLoop();startManualListen();}});
-
-function initVoice(){if(!voiceOk){updateVoiceStatus('N/A');return;}updateVoiceStatus(`Say "${settings.wakeword||'Hey Kyrox'}"`);if(!wakeActive)startWakeLoop();}
-function startWakeLoop(){if(wakeActive||!voiceOk)return;wakeActive=true;wakewordListen();}
-function stopWakeLoop(){wakeActive=false;if(wakeRec){try{wakeRec.abort();}catch(e){}wakeRec=null;}document.getElementById('wakeword-bar').classList.remove('on');}
-
-function wakewordListen() {
-  if(!wakeActive)return;
-  const ww=(settings.wakeword||'hey kyrox').toLowerCase();
-  document.getElementById('wk-text').textContent=`Listening for "${settings.wakeword||'Hey Kyrox'}"…`;
-  document.getElementById('wakeword-bar').classList.add('on');
-  const rec=new SR();rec.lang=navigator.language||'en-US';rec.continuous=false;rec.interimResults=false;rec.maxAlternatives=3;
-  rec.onresult=e=>{
-    let hit=false;
-    for(let i=0;i<e.results[0].length;i++)if(e.results[0][i].transcript.toLowerCase().includes(ww)){hit=true;break;}
-    wakeRec=null;
-    if(hit){
-      document.getElementById('wk-text').textContent='Kyrox activated — speak now…';
-      setListenState(true);updateVoiceStatus('Listening…');
-      if(settings.tts!==false)speakText('Yes?');
-      setTimeout(()=>{
-        const cmd=new SR();cmd.lang=navigator.language||'en-US';cmd.continuous=false;cmd.interimResults=false;cmd.maxAlternatives=1;
-        cmd.onresult=ev=>{const t=ev.results[0][0].transcript.trim();setListenState(false);updateVoiceStatus('');if(t){document.getElementById('user-input').value=t;document.getElementById('voice-last').innerHTML=`You: <em>${esc(t)}</em>`;send();}setTimeout(()=>wakewordListen(),900);};
-        cmd.onerror=()=>{setListenState(false);updateVoiceStatus('');setTimeout(()=>wakewordListen(),500);};
-        cmd.onend=()=>{setListenState(false);updateVoiceStatus('');};
-        try{cmd.start();voiceRec=cmd;}catch(e){setTimeout(()=>wakewordListen(),500);}
-      },700);
-    } else {setTimeout(()=>wakewordListen(),100);}
-  };
-  rec.onerror=()=>{wakeRec=null;setTimeout(()=>wakewordListen(),700);};
-  rec.onend=()=>{if(wakeActive&&!wakeRec)setTimeout(()=>wakewordListen(),300);};
-  try{rec.start();wakeRec=rec;}catch(e){setTimeout(()=>wakewordListen(),1200);}
-}
-
-function speakText(text, overrideVoiceName) {
-  if(!window.speechSynthesis||settings.tts===false)return;
-  window.speechSynthesis.cancel();
-  let clean=text.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu,'').replace(/```[\s\S]*?```/g,'code block').replace(/`[^`]+`/g,'').replace(/\[([^\]]+)\]\([^)]+\)/g,'$1').replace(/[*_~>#]/g,'').replace(/\s+/g,' ').trim();
-  if(!clean)return;
-  setSpeakState(true);
-  // Priority: server-suggested voice > user setting > smart default
-  const selectedVoiceName = overrideVoiceName || settings.tts_voice || '';
-  const rateVal=parseFloat(settings.tts_rate||1.05);
-  const chunks=clean.match(/.{1,250}(?:[.!?,\n]|$)/g)||[clean];
-  const speak=i=>{
-    if(i>=chunks.length){setSpeakState(false);return;}
-    const c=chunks[i].trim();if(!c){speak(i+1);return;}
-    const utt=new SpeechSynthesisUtterance(c);utt.rate=rateVal;utt.pitch=1.0;
-    const voices=window.speechSynthesis.getVoices();
-    let voice;
-    if(selectedVoiceName) voice=voices.find(v=>v.name===selectedVoiceName||v.name.toLowerCase().includes(selectedVoiceName.toLowerCase()));
-    if(!voice) voice=voices.find(v=>v.name.includes('Daniel')||v.name.includes('Guy')||v.name.includes('Alex'))||voices.find(v=>v.lang.startsWith('en')&&!v.name.toLowerCase().includes('female'))||voices[0];
-    if(voice)utt.voice=voice;
-    utt.onend=()=>speak(i+1);utt.onerror=()=>speak(i+1);
-    window.speechSynthesis.speak(utt);
-  };
-  speak(0);
-}
-
-// ── Settings panel ─────────────────────────────────────────────────────────
-let curBackend='openrouter', contextFiles=[];
-
-function setBackend(b){curBackend=b;document.getElementById('pill-or').classList.toggle('on',b==='openrouter');document.getElementById('pill-ol').classList.toggle('on',b==='ollama');document.getElementById('sec-or').style.display=b==='openrouter'?'':'none';document.getElementById('sec-ol').style.display=b==='ollama'?'':'none';}
-
-function loadSettingsIntoPanel(s) {
-  curBackend=s.backend||'openrouter';setBackend(curBackend);
-  document.getElementById('s-or-key').value=s.openrouter_key||'';
-  document.getElementById('s-ol-url').value=s.ollama_url||'http://localhost:11434';
-  document.getElementById('s-ol-model').value=s.ollama_model||'llama3';
-  document.getElementById('s-prompt').value=s.system_prompt||'';
-  document.getElementById('s-wakeword').value=s.wakeword||'hey kyrox';
-  document.getElementById('s-tts').checked=s.tts!==false;
-  const soc=s.socials||{};
-  ['twitch','twitter','ig','yt','dc','gh'].forEach((k,i)=>{const keys=['twitch','twitter','instagram','youtube','discord','github'];const el=document.getElementById('s-'+k);if(el)el.value=soc[keys[i]]||'';});
-  contextFiles=[...(s.context_files||[])];renderContextFiles();renderSettingsMemory();
-  const voiceSel=document.getElementById('s-voice-name'),rateEl=document.getElementById('s-voice-rate');
-  if(voiceSel&&s.tts_voice)voiceSel.value=s.tts_voice;
-  if(rateEl&&s.tts_rate){rateEl.value=s.tts_rate;document.getElementById('voice-rate-label').textContent='Rate: '+parseFloat(s.tts_rate).toFixed(2)+'x';}
-}
-
-function renderContextFiles(){const el=document.getElementById('cf-list');el.innerHTML='';contextFiles.forEach((p,i)=>{const d=document.createElement('div');d.className='cf-item';d.innerHTML=`<span style="flex:1;overflow:hidden;text-overflow:ellipsis">${esc(p)}</span><button onclick="removeContextPath(${i})">✕</button>`;el.appendChild(d);});}
-function addContextPath(){const v=document.getElementById('cf-path-input').value.trim();if(!v)return;contextFiles.push(v);document.getElementById('cf-path-input').value='';renderContextFiles();}
-function removeContextPath(i){contextFiles.splice(i,1);renderContextFiles();}
-async function scanContextNow(){toast('Scanning…');const r=await fetch('/api/scan-context',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paths:contextFiles})}).then(r=>r.json());toast(`✓ Scanned ${r.chars} chars`);}
-
-async function saveSettings() {
-  const voiceSel=document.getElementById('s-voice-name'),rateEl=document.getElementById('s-voice-rate');
-  const body={
-    backend:curBackend,
-    openrouter_key:document.getElementById('s-or-key').value.trim(),
-    ollama_url:document.getElementById('s-ol-url').value,
-    ollama_model:document.getElementById('s-ol-model').value,
-    system_prompt:document.getElementById('s-prompt').value,
-    wakeword:document.getElementById('s-wakeword').value,
-    tts:document.getElementById('s-tts').checked,
-    tts_voice:voiceSel?voiceSel.value:'',
-    tts_rate:rateEl?parseFloat(rateEl.value):1.05,
-    context_files:contextFiles,
-    socials:{twitch:document.getElementById('s-twitch').value.trim(),twitter:document.getElementById('s-twitter').value.trim(),instagram:document.getElementById('s-ig').value.trim(),youtube:document.getElementById('s-yt').value.trim(),discord:document.getElementById('s-dc').value.trim(),github:document.getElementById('s-gh').value.trim()}
-  };
-  const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json());
-  settings=r.settings;stopWakeLoop();closeSettings();updateStatusUI();initVoice();toast('✓ Settings saved');
-}
-
-document.getElementById('btn-save-settings').addEventListener('click',saveSettings);
-document.getElementById('btn-clear-memory').addEventListener('click',async()=>{if(!confirm('Clear all memory?'))return;await fetch(`/api/memory/${currentUser}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({facts:[],preferences:{}})});memory={facts:[],preferences:{}};updateSidebarMemory();renderSettingsMemory();toast('Memory cleared');});
-document.getElementById('btn-clear-history').addEventListener('click',()=>{if(!confirm('Clear conversation?'))return;if(ws&&ws.readyState===1)ws.send(JSON.stringify({action:'clear'}));closeSettings();});
-function openSettings(){renderSettingsMemory();document.getElementById('settings-panel').classList.add('open');}
-function closeSettings(){document.getElementById('settings-panel').classList.remove('open');}
-document.getElementById('btn-settings').addEventListener('click',openSettings);
-document.getElementById('settings-close').addEventListener('click',closeSettings);
-document.getElementById('settings-backdrop').addEventListener('click',closeSettings);
-
-// ── Setup modal ────────────────────────────────────────────────────────────
-document.getElementById('btn-setup-save').addEventListener('click',async()=>{const key=document.getElementById('setup-key').value.trim();if(!key.startsWith('sk-or')){toast('Invalid key format');return;}await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({openrouter_key:key,backend:'openrouter'})});document.getElementById('setup-modal').classList.add('hidden');await loadSettings();toast('✓ Kyrox initialized');});
-document.getElementById('btn-setup-skip').addEventListener('click',async()=>{await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({backend:'ollama'})});document.getElementById('setup-modal').classList.add('hidden');await loadSettings();});
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-function scrollBottom(){const a=document.getElementById('chat-area');a.scrollTop=a.scrollHeight;}
-function timeNow(){return new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});}
-function esc(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');}
-let _tt;
-function toast(msg,dur=2500){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('on');clearTimeout(_tt);_tt=setTimeout(()=>el.classList.remove('on'),dur);}
-
-// ── Voice select populate ──────────────────────────────────────────────────
-async function populateVoiceSelect() {
-  const sel=document.getElementById('s-voice-name');if(!sel)return;
-  const load=()=>{const voices=window.speechSynthesis?window.speechSynthesis.getVoices():[];if(!voices.length)return;while(sel.options.length>1)sel.remove(1);voices.forEach(v=>{const opt=document.createElement('option');opt.value=v.name;opt.textContent=v.name+' ('+v.lang+')';sel.appendChild(opt);});if(settings.tts_voice)sel.value=settings.tts_voice;};
-  load();if(window.speechSynthesis)window.speechSynthesis.addEventListener('voiceschanged',load);
-}
-document.getElementById('s-voice-rate').addEventListener('input',function(){document.getElementById('voice-rate-label').textContent='Rate: '+parseFloat(this.value).toFixed(2)+'x';});
-
-// ── News ───────────────────────────────────────────────────────────────────
-async function loadNews() {
-  const list=document.getElementById('news-list');
-  list.innerHTML='<div style="font-family:var(--mono);font-size:11px;color:var(--text3);text-align:center;padding:40px">Loading...</div>';
-  try {
-    const r=await fetch('/api/news');const data=await r.json();const articles=data.articles||[];
-    if(!articles.length){list.innerHTML='<div style="font-family:var(--mono);font-size:11px;color:var(--text3);text-align:center;padding:40px">No articles found.</div>';return;}
-    list.innerHTML='';
-    articles.forEach(a=>{
-      const d=document.createElement('div');
-      d.style.cssText='background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:4px;cursor:pointer;transition:border-color .2s';
-      d.onmouseenter=()=>d.style.borderColor='rgba(138,91,255,0.4)';d.onmouseleave=()=>d.style.borderColor='rgba(138,91,255,0.08)';
-      const pubDate=a.pub?new Date(a.pub).toLocaleString():'';
-      d.innerHTML='<div style="font-size:13px;color:var(--text);font-weight:500;line-height:1.4">'+esc(a.title)+'</div><div style="display:flex;gap:8px;align-items:center"><span style="font-family:var(--mono);font-size:9px;color:var(--v);background:var(--v-dim);padding:2px 7px;border-radius:10px">'+esc(a.source)+'</span><span style="font-family:var(--mono);font-size:9px;color:var(--text3)">'+pubDate+'</span></div>';
-      d.onclick=()=>{if(a.link)window.open(a.link,'_blank');else sendChip('Tell me more about: '+a.title);};
-      list.appendChild(d);
-    });
-  } catch(e){list.innerHTML='<div style="font-family:var(--mono);font-size:11px;color:var(--danger);text-align:center;padding:40px">Error: '+esc(e.message)+'</div>';}
-}
-
-// ── Overlay widget ─────────────────────────────────────────────────────────
-let overlayDragging=false,overlayOffX=0,overlayOffY=0;
-document.getElementById('btn-overlay').addEventListener('click',()=>{const w=document.getElementById('overlay-widget');w.style.display=(w.style.display==='none'||!w.style.display)?'block':'none';});
-function closeOverlay(){document.getElementById('overlay-widget').style.display='none';}
-const dragHandle=document.getElementById('overlay-drag');
-dragHandle.addEventListener('mousedown',e=>{overlayDragging=true;const w=document.getElementById('overlay-widget');const rect=w.getBoundingClientRect();overlayOffX=e.clientX-rect.left;overlayOffY=e.clientY-rect.top;w.style.left=rect.left+'px';w.style.top=rect.top+'px';w.style.right='auto';document.getElementById('app').style.pointerEvents='none';w.style.userSelect='none';e.preventDefault();});
-document.addEventListener('mousemove',e=>{if(!overlayDragging)return;const w=document.getElementById('overlay-widget');let nl=e.clientX-overlayOffX,nt=e.clientY-overlayOffY;nl=Math.max(0,Math.min(nl,window.innerWidth-w.offsetWidth));nt=Math.max(0,Math.min(nt,window.innerHeight-w.offsetHeight));w.style.left=nl+'px';w.style.top=nt+'px';});
-document.addEventListener('mouseup',()=>{if(!overlayDragging)return;overlayDragging=false;document.getElementById('app').style.pointerEvents='';document.getElementById('overlay-widget').style.userSelect='';});
-function overlayAsk(){const input=document.getElementById('overlay-input');const q=input.value.trim();if(!q)return;const respEl=document.getElementById('overlay-response');respEl.style.display='block';respEl.textContent='Thinking...';window._overlayPending=true;const screenQ=(q.toLowerCase().includes('screen')||q.toLowerCase().includes('ecran'))?q:'Look at my screen: '+q;sendMessage(screenQ);activateTab('chat');}
-function captureAndAsk(){const input=document.getElementById('overlay-input');const q=input.value.trim()||'Describe everything visible on my screen.';const respEl=document.getElementById('overlay-response');respEl.style.display='block';respEl.textContent='Scanning screen...';window._overlayPending=true;sendMessage(q.toLowerCase().includes('screen')?q:'Look at my screen and '+q);activateTab('chat');}
-
-setTimeout(populateVoiceSelect,800);
-init();
-</script>
-</body>
-</html>
+FONT_MONO  = ("Consolas", 9)
+FONT_MONO_S= ("Consolas", 8)
+FONT_MONO_L= ("Consolas", 10, "bold")
+FONT_TITLE = ("Consolas", 10, "bold")
+
+# ── Screen capture ─────────────────────────────────────────────────────────────
+def get_monitors():
+    if not HAS_MSS:
+        return [{"id": 0, "label": "Screen 1"}]
+    with mss.mss() as sct:
+        out = []
+        for i, m in enumerate(sct.monitors):
+            if i == 0:
+                lbl = f"All  ({m['width']}×{m['height']})"
+            else:
+                lbl = f"Screen {i}  {m['width']}×{m['height']}"
+            out.append({"id": i, "label": lbl, "mon": dict(m)})
+        return out
+
+def take_screenshot(idx=1):
+    if not HAS_MSS or not HAS_PIL:
+        return None
+    try:
+        with mss.mss() as sct:
+            mons = sct.monitors
+            idx = min(idx, len(mons) - 1)
+            img = sct.grab(mons[idx])
+            pil = Image.frombytes("RGB", img.size, img.bgra, "raw", "BGRX")
+            if pil.width > 1280:
+                r = 1280 / pil.width
+                pil = pil.resize((1280, int(pil.height * r)), Image.LANCZOS)
+            buf = io.BytesIO()
+            pil.save(buf, "PNG", optimize=True)
+            return base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return None
+
+def get_thumb(idx=1, w=240, h=135):
+    if not HAS_MSS or not HAS_PIL:
+        return None
+    try:
+        with mss.mss() as sct:
+            mons = sct.monitors
+            idx = min(idx, len(mons) - 1)
+            img = sct.grab(mons[idx])
+            pil = Image.frombytes("RGB", img.size, img.bgra, "raw", "BGRX")
+            pil.thumbnail((w, h), Image.LANCZOS)
+            return ImageTk.PhotoImage(pil)
+    except Exception:
+        return None
+
+def load_image_b64(path: str) -> tuple[str, str]:
+    """Load an image file and return (base64, mime_type)."""
+    ext = os.path.splitext(path)[1].lower()
+    mime = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".png": "image/png", ".gif": "image/gif",
+            ".webp": "image/webp"}.get(ext, "image/png")
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode(), mime
+
+# ── Vision API ─────────────────────────────────────────────────────────────────
+VISION_MODELS = [
+    "google/gemini-2.0-flash-001",
+    "google/gemini-flash-1.5",
+    "openai/gpt-4o-mini",
+    "anthropic/claude-3-haiku",
+    "meta-llama/llama-3.2-11b-vision-instruct:free",
+]
+
+def call_vision(img_b64: str, mime: str, prompt: str, on_done, on_status):
+    def _run():
+        try:
+            on_status("Connecting…", C["orange"])
+            req = urllib.request.Request(f"{KYROX_URL}/api/settings")
+            with urllib.request.urlopen(req, timeout=5) as r:
+                settings = json.loads(r.read())
+            api_key = settings.get("openrouter_key", "").strip()
+            if not api_key:
+                on_done("⚠ No API key — add your OpenRouter key in Kyrox settings.")
+                return
+
+            for model in VISION_MODELS:
+                on_status(f"Asking {model.split('/')[-1]}…", C["text2"])
+                payload = json.dumps({
+                    "model": model,
+                    "messages": [{"role": "user", "content": [
+                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_b64}"}},
+                        {"type": "text", "text": prompt},
+                    ]}],
+                    "max_tokens": 1024,
+                }).encode()
+                req2 = urllib.request.Request(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    data=payload,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": "https://kyrox.nemea.uk",
+                        "X-Title": "Kyrox Lens",
+                    }, method="POST"
+                )
+                try:
+                    with urllib.request.urlopen(req2, timeout=30) as r:
+                        resp = json.loads(r.read())
+                        text = resp.get("choices", [{}])[0].get("message", {}).get("content", "")
+                        if text:
+                            on_done(text)
+                            return
+                except urllib.error.HTTPError as e:
+                    if e.code in (429, 404, 400, 422):
+                        continue
+                except Exception:
+                    continue
+            on_done("⚠ All vision models unavailable.")
+        except Exception as e:
+            on_done(f"⚠ Error: {e}")
+    threading.Thread(target=_run, daemon=True).start()
+
+def call_text(prompt: str, on_done, on_status):
+    """Send a plain text question to Kyrox backend (no image)."""
+    def _run():
+        try:
+            on_status("Thinking…", C["orange"])
+            req = urllib.request.Request(f"{KYROX_URL}/api/settings")
+            with urllib.request.urlopen(req, timeout=5) as r:
+                settings = json.loads(r.read())
+            api_key = settings.get("openrouter_key", "").strip()
+            if not api_key:
+                on_done("⚠ No API key configured.")
+                return
+
+            from urllib.parse import urlencode
+            models = [
+                "deepseek/deepseek-v3:free",
+                "meta-llama/llama-3.3-70b-instruct:free",
+                "openrouter/auto",
+            ]
+            for model in models:
+                on_status(f"Asking {model.split('/')[-1]}…", C["text2"])
+                payload = json.dumps({
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 1024,
+                }).encode()
+                req2 = urllib.request.Request(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    data=payload,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": "https://kyrox.nemea.uk",
+                        "X-Title": "Kyrox Lens",
+                    }, method="POST"
+                )
+                try:
+                    with urllib.request.urlopen(req2, timeout=30) as r:
+                        resp = json.loads(r.read())
+                        text = resp.get("choices", [{}])[0].get("message", {}).get("content", "")
+                        if text:
+                            on_done(text)
+                            return
+                except Exception:
+                    continue
+            on_done("⚠ Could not get a response.")
+        except Exception as e:
+            on_done(f"⚠ Error: {e}")
+    threading.Thread(target=_run, daemon=True).start()
+
+# ── Auto-install deps ──────────────────────────────────────────────────────────
+def ensure_deps():
+    missing = []
+    if not HAS_MSS: missing.append("mss")
+    if not HAS_PIL: missing.append("pillow")
+    if missing:
+        import subprocess
+        subprocess.run([sys.executable, "-m", "pip", "install", "--quiet"] + missing, check=False)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+# ── Rounded rect helper ────────────────────────────────────────────────────────
+def _place(widget, x, y, w, h):
+    widget.place(x=x, y=y, width=w, height=h)
+
+# ── Main window ────────────────────────────────────────────────────────────────
+class KyroxLens:
+    W, H = 320, 560
+
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("Kyrox Lens")
+        self.root.overrideredirect(True)
+        self.root.attributes("-topmost", True)
+        self.root.configure(bg=C["bg"])
+        self.root.resizable(False, False)
+
+        # Outer 1px white border effect via frame
+        self.root.configure(highlightbackground=C["text3"], highlightthickness=1)
+
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        x  = sw - self.W - 24
+        y  = (sh - self.H) // 2
+        self.root.geometry(f"{self.W}x{self.H}+{x}+{y}")
+
+        self._dx = self._dy = 0
+        self._thumb = None
+        self._uploaded_img_b64 = None   # base64 of user-uploaded image
+        self._uploaded_img_mime = None
+        self._uploaded_img_name = ""
+        self._uploaded_file_text = None # text content of uploaded file
+        self.monitors = get_monitors()
+        self.sel_mon  = tk.IntVar(value=min(1, len(self.monitors) - 1))
+        self.mode     = tk.StringVar(value="screen")  # "screen" | "upload"
+
+        self._build()
+        self._refresh_thumb()
+        self._keep_top()
+
+    def _keep_top(self):
+        self.root.attributes("-topmost", True)
+        self.root.lift()
+        self.root.after(1000, self._keep_top)
+
+    # ── Build UI ───────────────────────────────────────────────────────────────
+    def _build(self):
+        r = self.root
+
+        # ── Titlebar ──────────────────────────────────────────────────────────
+        bar = tk.Frame(r, bg=C["bg2"], height=42)
+        bar.pack(fill="x")
+        bar.pack_propagate(False)
+
+        # thin bottom border on titlebar
+        tk.Frame(bar, bg=C["text3"], height=1).place(relx=0, rely=1, relwidth=1, anchor="sw")
+
+        tk.Label(bar, text="KYROX  LENS",
+                 font=("Consolas", 10, "bold"),
+                 fg=C["text"], bg=C["bg2"],
+                 padx=14).pack(side="left", fill="y")
+
+        tf = tk.Frame(bar, bg=C["bg2"])
+        tf.pack(side="right", padx=8, pady=8)
+        self._icon_btn(tf, "—", self._minimize).pack(side="left", padx=2)
+        self._icon_btn(tf, "✕", r.destroy, danger=True).pack(side="left")
+
+        bar.bind("<ButtonPress-1>", self._ds)
+        bar.bind("<B1-Motion>",     self._dm)
+
+        # ── Mode tabs ─────────────────────────────────────────────────────────
+        tab_f = tk.Frame(r, bg=C["bg"], pady=8, padx=12)
+        tab_f.pack(fill="x")
+
+        self._tab_screen = self._tab_btn(tab_f, "◉  SCREEN", lambda: self._set_mode("screen"))
+        self._tab_screen.pack(side="left", padx=(0, 4))
+        self._tab_upload = self._tab_btn(tab_f, "↑  UPLOAD", lambda: self._set_mode("upload"))
+        self._tab_upload.pack(side="left")
+        self._update_tabs()
+
+        # ── Screen selector ───────────────────────────────────────────────────
+        self.screen_frame = tk.Frame(r, bg=C["bg"])
+        self.screen_frame.pack(fill="x", padx=12)
+
+        mon_f = tk.Frame(self.screen_frame, bg=C["bg"])
+        mon_f.pack(fill="x")
+        for m in self.monitors:
+            rb = tk.Radiobutton(
+                mon_f, text=m["label"],
+                variable=self.sel_mon, value=m["id"],
+                font=("Consolas", 8),
+                fg=C["text2"], bg=C["bg"],
+                selectcolor=C["bg3"],
+                activebackground=C["bg"],
+                activeforeground=C["text"],
+                indicatoron=True, cursor="hand2",
+                command=self._refresh_thumb,
+            )
+            rb.pack(side="left", padx=(0, 10))
+
+        # Preview
+        prev_outer = tk.Frame(self.screen_frame, bg=C["text3"], padx=1, pady=1)
+        prev_outer.pack(fill="x", pady=(6, 0))
+        prev_inner = tk.Frame(prev_outer, bg=C["bg2"])
+        prev_inner.pack(fill="both")
+
+        self.prev_lbl = tk.Label(
+            prev_inner, bg=C["bg2"],
+            text="Click to refresh",
+            font=("Consolas", 8), fg=C["text3"],
+            width=240, height=135, cursor="hand2"
+        )
+        self.prev_lbl.pack()
+        self.prev_lbl.bind("<Button-1>", lambda e: self._refresh_thumb())
+
+        ref_f = tk.Frame(self.screen_frame, bg=C["bg"])
+        ref_f.pack(fill="x", pady=(4, 0))
+        tk.Button(ref_f, text="↻  refresh",
+                  font=("Consolas", 8), fg=C["text3"], bg=C["bg"],
+                  relief="flat", bd=0, cursor="hand2",
+                  activebackground=C["bg"], activeforeground=C["text"],
+                  command=self._refresh_thumb).pack(side="right")
+
+        # ── Upload frame ──────────────────────────────────────────────────────
+        self.upload_frame = tk.Frame(r, bg=C["bg"])
+        # (not packed yet — shown when mode=upload)
+
+        self.upload_lbl = tk.Label(
+            self.upload_frame,
+            text="No file selected",
+            font=("Consolas", 8), fg=C["text3"], bg=C["bg2"],
+            anchor="w", padx=10, pady=8,
+            relief="flat", cursor="hand2"
+        )
+        self.upload_lbl.pack(fill="x", padx=0, pady=(0, 4))
+        self.upload_lbl.bind("<Button-1>", lambda e: self._pick_file())
+
+        ub_f = tk.Frame(self.upload_frame, bg=C["bg"])
+        ub_f.pack(fill="x")
+        self._outline_btn(ub_f, "↑  PICK IMAGE", self._pick_image).pack(side="left", padx=(0, 4))
+        self._outline_btn(ub_f, "📄  PICK FILE",  self._pick_text_file).pack(side="left")
+
+        # ── Separator ─────────────────────────────────────────────────────────
+        tk.Frame(r, bg=C["text3"], height=1).pack(fill="x", padx=12, pady=10)
+
+        # ── Prompt ────────────────────────────────────────────────────────────
+        tk.Label(r, text="PROMPT  (optional)",
+                 font=("Consolas", 7, "bold"),
+                 fg=C["text3"], bg=C["bg"]).pack(anchor="w", padx=12)
+
+        prompt_f = tk.Frame(r, bg=C["text3"], padx=1, pady=1)
+        prompt_f.pack(fill="x", padx=12, pady=(3, 6))
+        self.prompt = tk.Entry(
+            prompt_f,
+            font=("Consolas", 10),
+            fg=C["text"], bg=C["bg2"],
+            insertbackground=C["text"],
+            relief="flat",
+        )
+        self.prompt.pack(fill="x", ipady=6, padx=4)
+        self.prompt.bind("<Return>", lambda e: self._do_analyse())
+
+        # ── Action buttons ────────────────────────────────────────────────────
+        bf = tk.Frame(r, bg=C["bg"])
+        bf.pack(fill="x", padx=12)
+
+        self._primary_btn(bf, "◉  ANALYSE", self._do_analyse).pack(fill="x", pady=(0, 4))
+        self._primary_btn(bf, "⚡  SOLVE",   self._do_solve, outline=True).pack(fill="x")
+
+        # ── Separator ─────────────────────────────────────────────────────────
+        tk.Frame(r, bg=C["text3"], height=1).pack(fill="x", padx=12, pady=8)
+
+        # ── Status ────────────────────────────────────────────────────────────
+        self.status = tk.Label(r, text="Ready.",
+                               font=("Consolas", 8),
+                               fg=C["text3"], bg=C["bg"],
+                               anchor="w", padx=12)
+        self.status.pack(fill="x")
+
+        # ── Response ──────────────────────────────────────────────────────────
+        resp_outer = tk.Frame(r, bg=C["text3"], padx=1, pady=1)
+        resp_outer.pack(fill="both", expand=True, padx=12, pady=(4, 12))
+
+        resp_inner = tk.Frame(resp_outer, bg=C["bg2"])
+        resp_inner.pack(fill="both", expand=True)
+
+        self.resp = tk.Text(
+            resp_inner,
+            font=("Consolas", 9),
+            fg=C["text"], bg=C["bg2"],
+            wrap="word", relief="flat",
+            state="disabled",
+            selectbackground=C["bg3"],
+            padx=10, pady=8,
+            cursor="arrow",
+        )
+        sb = tk.Scrollbar(resp_inner, command=self.resp.yview,
+                          bg=C["bg2"], troughcolor=C["bg2"], width=4,
+                          relief="flat", bd=0)
+        self.resp.config(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        self.resp.pack(fill="both", expand=True)
+
+    # ── Widget factories ───────────────────────────────────────────────────────
+    def _icon_btn(self, parent, text, cmd, danger=False):
+        fg = C["danger"] if danger else C["text2"]
+        return tk.Button(parent, text=text,
+                         font=("Consolas", 9), fg=fg, bg=C["bg2"],
+                         relief="flat", bd=0, padx=6, pady=2,
+                         activebackground=C["bg3"], activeforeground=fg,
+                         cursor="hand2", command=cmd)
+
+    def _tab_btn(self, parent, text, cmd):
+        return tk.Button(parent, text=text,
+                         font=("Consolas", 8, "bold"), fg=C["text3"], bg=C["bg"],
+                         relief="flat", bd=0, padx=10, pady=4,
+                         activebackground=C["bg2"], activeforeground=C["text"],
+                         cursor="hand2", command=cmd)
+
+    def _outline_btn(self, parent, text, cmd):
+        f = tk.Frame(parent, bg=C["text3"], padx=1, pady=1)
+        tk.Button(f, text=text,
+                  font=("Consolas", 8), fg=C["text2"], bg=C["bg"],
+                  relief="flat", bd=0, padx=8, pady=4,
+                  activebackground=C["bg2"], activeforeground=C["text"],
+                  cursor="hand2", command=cmd).pack()
+        return f
+
+    def _primary_btn(self, parent, text, cmd, outline=False):
+        if outline:
+            fg, bg, abg = C["text2"], C["bg2"], C["bg3"]
+        else:
+            fg, bg, abg = C["bg"], C["text"], C["text2"]
+        return tk.Button(parent, text=text,
+                         font=("Consolas", 9, "bold"), fg=fg, bg=bg,
+                         relief="flat", bd=0, pady=9,
+                         activebackground=abg, activeforeground=fg,
+                         cursor="hand2", command=cmd)
+
+    # ── Mode ──────────────────────────────────────────────────────────────────
+    def _set_mode(self, mode):
+        self.mode.set(mode)
+        self._update_tabs()
+        if mode == "screen":
+            self.upload_frame.pack_forget()
+            self.screen_frame.pack(fill="x", padx=12)
+        else:
+            self.screen_frame.pack_forget()
+            self.upload_frame.pack(fill="x", padx=12)
+
+    def _update_tabs(self):
+        m = self.mode.get()
+        self._tab_screen.config(
+            fg=C["text"] if m == "screen" else C["text3"],
+            bg=C["bg2"] if m == "screen" else C["bg"])
+        self._tab_upload.config(
+            fg=C["text"] if m == "upload" else C["text3"],
+            bg=C["bg2"] if m == "upload" else C["bg"])
+
+    # ── File pickers ──────────────────────────────────────────────────────────
+    def _pick_image(self):
+        path = filedialog.askopenfilename(
+            title="Pick an image",
+            filetypes=[("Images", "*.png *.jpg *.jpeg *.gif *.webp"), ("All", "*.*")]
+        )
+        if not path:
+            return
+        try:
+            b64, mime = load_image_b64(path)
+            self._uploaded_img_b64  = b64
+            self._uploaded_img_mime = mime
+            self._uploaded_file_text = None
+            name = os.path.basename(path)
+            self._uploaded_img_name = name
+            self.upload_lbl.config(text=f"✓  {name}", fg=C["text"])
+
+            # show thumbnail
+            if HAS_PIL:
+                img = Image.open(path)
+                img.thumbnail((240, 135), Image.LANCZOS)
+                ph = ImageTk.PhotoImage(img)
+                self._thumb = ph
+                self.prev_lbl.config(image=ph, text="", width=240, height=135)
+        except Exception as e:
+            self.upload_lbl.config(text=f"⚠ {e}", fg=C["danger"])
+
+    def _pick_text_file(self):
+        path = filedialog.askopenfilename(
+            title="Pick a file",
+            filetypes=[("Text / Code", "*.txt *.md *.py *.js *.ts *.html *.css *.json *.csv *.yaml *.toml *.xml"), ("All", "*.*")]
+        )
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                text = f.read(20000)  # cap at 20k chars
+            self._uploaded_file_text = text
+            self._uploaded_img_b64   = None
+            name = os.path.basename(path)
+            self._uploaded_img_name  = name
+            self.upload_lbl.config(text=f"✓  {name}  ({len(text)} chars)", fg=C["text"])
+            self.prev_lbl.config(image="", text=f"{name}\n{len(text)} chars", width=240, height=135)
+        except Exception as e:
+            self.upload_lbl.config(text=f"⚠ {e}", fg=C["danger"])
+
+    def _pick_file(self):
+        self._pick_image()
+
+    # ── Drag ──────────────────────────────────────────────────────────────────
+    def _ds(self, e):
+        self._dx = e.x_root - self.root.winfo_x()
+        self._dy = e.y_root - self.root.winfo_y()
+
+    def _dm(self, e):
+        x = max(0, min(e.x_root - self._dx, self.root.winfo_screenwidth()  - self.W))
+        y = max(0, min(e.y_root - self._dy, self.root.winfo_screenheight() - self.H))
+        self.root.geometry(f"+{x}+{y}")
+
+    # ── Minimize ──────────────────────────────────────────────────────────────
+    def _minimize(self):
+        self.root.overrideredirect(False)
+        self.root.iconify()
+        def _restore(e):
+            self.root.deiconify()
+            self.root.overrideredirect(True)
+            self.root.attributes("-topmost", True)
+            self.root.unbind("<Map>")
+        self.root.bind("<Map>", _restore)
+
+    # ── Preview ───────────────────────────────────────────────────────────────
+    def _refresh_thumb(self):
+        def _go():
+            idx   = self.sel_mon.get()
+            thumb = get_thumb(idx, 240, 135)
+            def _ui():
+                if thumb:
+                    self._thumb = thumb
+                    self.prev_lbl.config(image=thumb, text="", width=240, height=135)
+                else:
+                    self.prev_lbl.config(text="pip install mss pillow", width=240, height=135)
+            self.root.after(0, _ui)
+        threading.Thread(target=_go, daemon=True).start()
+
+    # ── Status / response ──────────────────────────────────────────────────────
+    def _setstatus(self, msg, color=None):
+        self.root.after(0, lambda: self.status.config(text=msg, fg=color or C["text3"]))
+
+    def _setresp(self, text):
+        def _ui():
+            self.resp.config(state="normal")
+            self.resp.delete("1.0", "end")
+            self.resp.insert("end", text)
+            self.resp.config(state="disabled")
+        self.root.after(0, _ui)
+
+    # ── Actions ───────────────────────────────────────────────────────────────
+    def _do_analyse(self):
+        p = self.prompt.get().strip() or "Describe everything you see in detail."
+        self._run(p)
+
+    def _do_solve(self):
+        p = self.prompt.get().strip() or (
+            "Look at this carefully. Identify any problem, error, task, or question. "
+            "Provide a clear, direct solution or answer."
+        )
+        self._run(p)
+
+    def _run(self, prompt):
+        mode = self.mode.get()
+        self._setresp("")
+
+        # ── Upload mode ──────────────────────────────────────────────────────
+        if mode == "upload":
+            if self._uploaded_img_b64:
+                # Image upload → vision
+                self._setstatus("Sending image…", C["orange"])
+                call_vision(
+                    self._uploaded_img_b64,
+                    self._uploaded_img_mime or "image/png",
+                    prompt,
+                    on_done=lambda t: (self._setstatus("✓ Done", C["green"]), self._setresp(t)),
+                    on_status=self._setstatus,
+                )
+            elif self._uploaded_file_text:
+                # Text file upload → text model
+                combined = f"{prompt}\n\n[FILE: {self._uploaded_img_name}]\n{self._uploaded_file_text}"
+                self._setstatus("Sending file…", C["orange"])
+                call_text(
+                    combined,
+                    on_done=lambda t: (self._setstatus("✓ Done", C["green"]), self._setresp(t)),
+                    on_status=self._setstatus,
+                )
+            else:
+                self._setstatus("No file selected.", C["danger"])
+            return
+
+        # ── Screen mode ──────────────────────────────────────────────────────
+        self._setstatus("Capturing screen…", C["orange"])
+
+        def _go():
+            idx     = self.sel_mon.get()
+            img_b64 = take_screenshot(idx)
+            if img_b64 is None:
+                self._setstatus("⚠ Capture failed — pip install mss pillow", C["danger"])
+                self._setresp("Could not capture screen.\nRun: pip install mss pillow")
+                return
+            self._setstatus("Analysing…", C["text2"])
+            self._refresh_thumb()
+            call_vision(
+                img_b64, "image/png", prompt,
+                on_done=lambda t: (self._setstatus("✓ Done", C["green"]), self._setresp(t)),
+                on_status=self._setstatus,
+            )
+        threading.Thread(target=_go, daemon=True).start()
+
+    def run(self):
+        self.root.mainloop()
+
+# ── Entry ──────────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    ensure_deps()
+    KyroxLens().run()
