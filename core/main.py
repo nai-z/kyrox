@@ -350,29 +350,78 @@ def memory_summary(memory: dict) -> str:
 
 # ── Auto-scan home ─────────────────────────────────────────────────────────
 def auto_scan_user_profile() -> str:
+    """
+    Scan the user's PC for .txt and .md files to build a profile.
+    Priority: known profile files → Desktop → Documents → home root → broad PC scan.
+    Capped at 12 000 chars total to stay within context budget.
+    """
     home = Path.home()
-    chunks = []
+    seen: set[Path] = set()
+    chunks: list[str] = []
+    MAX_CHARS = 12000
+    FILE_CAP  = 2000  # chars per file
+
+    def _add(p: Path, label: str | None = None):
+        rp = p.resolve()
+        if rp in seen:
+            return
+        seen.add(rp)
+        try:
+            text = p.read_text(errors="replace").strip()
+            if not text:
+                return
+            tag = label or str(p.relative_to(home))
+            chunks.append(f"[{tag}]\n{text[:FILE_CAP]}")
+        except Exception:
+            pass
+
+    # 1. High-priority profile candidates
     profile_candidates = [
         home / "about.md", home / "about.txt",
         home / "README.md", home / "profile.md",
         home / "me.md", home / "me.txt",
         home / "Documents" / "about.md",
         home / "Documents" / "profile.md",
+        home / "Documents" / "me.txt",
+        home / "Documents" / "README.md",
     ]
     for p in profile_candidates:
-        if p.exists():
-            try:
-                chunks.append(f"[Profile file: {p.name}]\n{p.read_text(errors='replace')[:3000]}")
-            except Exception:
-                pass
+        if p.exists() and p.is_file():
+            _add(p, f"Profile: {p.name}")
+
+    # 2. Desktop files
     desktop = home / "Desktop"
     if desktop.exists():
-        for f in list(desktop.glob("*.md"))[:5] + list(desktop.glob("*.txt"))[:5]:
-            try:
-                chunks.append(f"[Desktop/{f.name}]\n{f.read_text(errors='replace')[:1500]}")
-            except Exception:
-                pass
-    return "\n\n---\n\n".join(chunks)[:8000]
+        for f in sorted(desktop.glob("*.md"))[:8] + sorted(desktop.glob("*.txt"))[:8]:
+            _add(f, f"Desktop/{f.name}")
+
+    # 3. Broad scan: common folders that reveal who the user is
+    scan_dirs = [
+        home / "Documents",
+        home / "Notes",
+        home / "OneDrive" / "Documents",
+        home / "iCloud Drive" / "Documents",
+        home / "Dropbox",
+        home,  # root files only (no recursion at this step)
+    ]
+    for d in scan_dirs:
+        if not d.exists():
+            continue
+        # non-recursive for home root to avoid huge scans
+        depth = 1 if d == home else 2
+        for f in sorted(d.rglob("*.md") if depth == 2 else d.glob("*.md"))[:15]:
+            _add(f)
+            if sum(len(c) for c in chunks) >= MAX_CHARS:
+                break
+        for f in sorted(d.rglob("*.txt") if depth == 2 else d.glob("*.txt"))[:15]:
+            _add(f)
+            if sum(len(c) for c in chunks) >= MAX_CHARS:
+                break
+        if sum(len(c) for c in chunks) >= MAX_CHARS:
+            break
+
+    result = "\n\n---\n\n".join(chunks)
+    return result[:MAX_CHARS]
 
 # ── Context files ──────────────────────────────────────────────────────────
 def scan_context_files(paths: list[str]) -> str:
@@ -510,24 +559,39 @@ def execute_pc_action(action: dict, settings: dict) -> dict:
     # ── open ──────────────────────────────────────────────────────────────
     if atype == "open":
         def _launch(cmd_or_url: str):
-            if os_name == "Windows":
+            """Launch a URL or app command using the best method for the OS."""
+            os_name_l = platform.system()
+            # Always try webbrowser for http/https — most reliable cross-platform
+            if cmd_or_url.startswith(("http://", "https://")):
+                webbrowser.open(cmd_or_url)
+                return
+            # Protocol URIs (discord:, steam://, spotify:, tg:, vscode:, …)
+            if "://" in cmd_or_url or (cmd_or_url.endswith(":") and len(cmd_or_url) > 2):
+                webbrowser.open(cmd_or_url)
+                return
+            # Native app name / command
+            if os_name_l == "Windows":
                 subprocess.Popen(
                     ["powershell", "-WindowStyle", "Hidden", "-Command",
                      f"Start-Process '{cmd_or_url}'"],
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
-            elif os_name == "Darwin":
-                subprocess.Popen(["open", cmd_or_url])
+            elif os_name_l == "Darwin":
+                # Try `open -a AppName` first, then plain open
+                try:
+                    subprocess.Popen(["open", "-a", cmd_or_url])
+                except Exception:
+                    subprocess.Popen(["open", cmd_or_url])
             else:
                 subprocess.Popen(["xdg-open", cmd_or_url])
 
         try:
             if target.startswith(("http://", "https://")):
-                _launch(target)
+                webbrowser.open(target)
                 return {"ok": True, "message": f"Opened {target}"}
 
             if "://" in target or (target.endswith(":") and len(target) > 2):
-                _launch(target)
+                webbrowser.open(target)
                 return {"ok": True, "message": f"Launched {target}"}
 
             reg = settings.get("apps", {})
@@ -558,12 +622,12 @@ def execute_pc_action(action: dict, settings: dict) -> dict:
                 "telegram": "tg:",
                 "whatsapp": "https://web.whatsapp.com",
                 "slack": "slack:",
-                "vscode": "code",
+                "vscode": "vscode:",
                 "notepad": "notepad",
                 "calculator": "calc",
                 "explorer": "explorer",
-                "chrome": "chrome",
-                "firefox": "firefox",
+                "chrome": "https://google.com",   # browser fallback
+                "firefox": "https://google.com",  # browser fallback
             }
             tl_clean = tl.strip().lower()
             if tl_clean in KNOWN_SITES:
@@ -572,11 +636,12 @@ def execute_pc_action(action: dict, settings: dict) -> dict:
 
             if "." in target:
                 url = target if target.startswith("http") else f"https://{target}"
-                _launch(url)
+                webbrowser.open(url)
                 return {"ok": True, "message": f"Opened {url}"}
 
-            _launch(target)
-            return {"ok": True, "message": f"Launched {target}"}
+            # Last resort: try as a generic URL
+            webbrowser.open(f"https://{target}.com")
+            return {"ok": True, "message": f"Opened {target}"}
 
         except Exception as e:
             try:
@@ -1007,6 +1072,12 @@ async def chat_ws(ws: WebSocket, uid: str):
                 history = []
                 save_history(uid, history)
                 await ws.send_text(json.dumps({"type": "cleared"}))
+                continue
+
+            if action == "new_chat":
+                history = []
+                save_history(uid, history)
+                await ws.send_text(json.dumps({"type": "new_chat"}))
                 continue
 
             if action == "learn":
