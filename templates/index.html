@@ -326,6 +326,11 @@ header{grid-area:header;display:flex;align-items:center;justify-content:space-be
     </div>
     <div class="sidebar-divider"></div>
     <div class="sidebar-section">
+      <div class="sidebar-label">Chat</div>
+      <button class="btn-new-user" id="btn-new-chat" style="margin-bottom:0;border-color:rgba(255,255,255,0.12);color:var(--text2)" title="Start a new conversation without deleting your profile">+ New Chat</button>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section">
       <div class="sidebar-label">System</div>
       <div class="stat-mini"><span class="stat-mini-label">Backend</span><span class="stat-mini-val" id="stat-backend">—</span></div>
       <div class="stat-mini"><span class="stat-mini-label">Memory</span><span class="stat-mini-val" id="stat-memory">0 facts</span></div>
@@ -603,6 +608,11 @@ function openNewUser() {
 }
 
 document.getElementById('btn-new-user').addEventListener('click',openNewUser);
+document.getElementById('btn-new-chat').addEventListener('click',()=>{
+  if(!ws||ws.readyState!==1){toast('Not connected');return;}
+  ws.send(JSON.stringify({action:'new_chat'}));
+  activateTab('chat');
+});
 document.getElementById('btn-nu-cancel').addEventListener('click',()=>document.getElementById('new-user-modal').classList.add('hidden'));
 document.getElementById('btn-nu-create').addEventListener('click',async()=>{
   const name=document.getElementById('nu-name').value.trim(); if(!name)return;
@@ -670,6 +680,8 @@ function handleWS(msg) {
       } else showError(msg.content); break;
     case 'cleared':
       document.getElementById('chat-area').innerHTML=''; renderEmptyState(); toast('Conversation cleared'); break;
+    case 'new_chat':
+      document.getElementById('chat-area').innerHTML=''; renderEmptyState(); toast('New chat started'); break;
     case 'learned':
       fetch(`/api/memory/${currentUser}`).then(r=>r.json()).then(m=>{memory=m;updateSidebarMemory();}); break;
   }
@@ -709,28 +721,58 @@ function executeActionClient(act) {
   if (type === 'open') {
     let target = (act.target || '').trim();
     const tl = target.toLowerCase().trim();
-    // Protocol URLs (discord:, steam://, https://, etc.)
-    if (target.startsWith('http://') || target.startsWith('https://') ||
-        target.includes('://') || (target.endsWith(':') && target.length > 2)) {
+
+    // Pure HTTP/HTTPS URLs → open in browser tab directly
+    if (target.startsWith('http://') || target.startsWith('https://')) {
       window.open(target, '_blank');
       return {ok:true, message:`Opened ${act.label||target}`, client:true};
     }
-    // Known app by name
-    if (APP_PROTOCOLS_CLIENT[tl]) {
-      window.open(APP_PROTOCOLS_CLIENT[tl], '_blank');
+
+    // Known websites by name → open directly as URL
+    if (KNOWN_SITES_CLIENT[tl]) {
+      const url = KNOWN_SITES_CLIENT[tl];
+      if (url.startsWith('http')) {
+        window.open(url, '_blank');
+        return {ok:true, message:`Opened ${tl}`, client:true};
+      }
+      // Protocol URI (discord:, steam://, tg:, …) — try window.open, then let server handle it
+      try { window.open(url, '_blank'); } catch(e) {}
       return {ok:true, message:`Launched ${tl}`, client:true};
     }
-    // Known site by name
-    if (KNOWN_SITES_CLIENT[tl]) {
-      window.open(KNOWN_SITES_CLIENT[tl], '_blank');
-      return {ok:true, message:`Opened ${tl}`, client:true};
+
+    // Known app protocols (discord:, steam://, spotify:, …) — use window.location to trigger OS
+    if (APP_PROTOCOLS_CLIENT[tl]) {
+      const proto = APP_PROTOCOLS_CLIENT[tl];
+      if (proto.startsWith('http')) {
+        window.open(proto, '_blank');
+      } else {
+        // Use hidden iframe trick to avoid navigation for protocol URIs
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+        try { iframe.src = proto; } catch(e) {}
+        setTimeout(()=>{ try { document.body.removeChild(iframe); } catch(e){} }, 2000);
+      }
+      return {ok:true, message:`Launched ${tl}`, client:true};
     }
+
     // Has a dot → treat as URL
     if (target.includes('.')) {
       window.open(target.startsWith('http') ? target : 'https://'+target, '_blank');
       return {ok:true, message:`Opened ${target}`, client:true};
     }
-    // Fallback: try as URL
+
+    // Protocol URI passed directly (e.g. "vscode:")
+    if (target.includes('://') || (target.endsWith(':') && target.length > 2)) {
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
+      try { iframe.src = target; } catch(e) {}
+      setTimeout(()=>{ try { document.body.removeChild(iframe); } catch(e){} }, 2000);
+      return {ok:true, message:`Launched ${act.label||target}`, client:true};
+    }
+
+    // Fallback: try as .com
     window.open('https://'+target+'.com', '_blank');
     return {ok:true, message:`Opened ${target}`, client:true};
   }
