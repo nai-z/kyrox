@@ -76,6 +76,7 @@ function Download-Kyrox {
   New-Item -ItemType Directory -Force -Path "$InstallDir\templates" | Out-Null
   New-Item -ItemType Directory -Force -Path "$InstallDir\static" | Out-Null
   New-Item -ItemType Directory -Force -Path "$InstallDir\plugins" | Out-Null
+  New-Item -ItemType Directory -Force -Path "$InstallDir\skills" | Out-Null
 
   $files = @(
     @{ remote = "core/main.py";         local = "core\main.py" },
@@ -94,6 +95,31 @@ function Download-Kyrox {
     }
   }
   Write-Ok "Files downloaded"
+
+  # ── Download skills ──────────────────────────────────────────────────────
+  Write-Step "Installing skills..."
+  $skills = @(
+    "frontend",
+    "python",
+    "javascript",
+    "api",
+    "debugging",
+    "writing",
+    "data"
+  )
+
+  $skillCount = 0
+  foreach ($skill in $skills) {
+    $url  = "$RawUrl/skills/$skill.md"
+    $dest = "$InstallDir\skills\$skill.md"
+    try {
+      Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing
+      $skillCount++
+    } catch {
+      Write-Warn "Could not download skill: $skill"
+    }
+  }
+  Write-Ok "$skillCount skill(s) installed"
 }
 
 # ── Install Python deps ────────────────────────────────────────────────────
