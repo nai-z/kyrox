@@ -6,7 +6,7 @@ Multi-user, persistent memory, PC actions, screenshot vision, .md/.txt context r
 
 import json, os, re, subprocess, platform, webbrowser, tempfile, base64, io, hashlib, time
 from pathlib import Path
-import threading
+import threading 
 import queue
 from datetime import datetime
 from typing import Optional
@@ -1434,10 +1434,17 @@ class DesktopOrbAgent:
 
         # Internal animation vars
         mons = get_desktop_monitors()
-        main = pick_main_monitor_rect()
+        # Use the virtual desktop bounds (all monitors) so it can float across screens.
+        min_x = min(m[0] for m in mons)
+        min_y = min(m[1] for m in mons)
+        max_x = max(m[0] + m[2] for m in mons)
+        max_y = max(m[1] + m[3] for m in mons)
+
         drift_enabled = True
-        pos = [main[0] + main[2] * 0.15, main[1] + main[3] * 0.25]
-        vel = [3.2, 2.6]
+        pos = [min_x + (max_x - min_x) * 0.2, min_y + (max_y - min_y) * 0.3]
+        vel = [2.7, 2.1]
+        wrap = True  # wrap-around movement instead of bouncing
+
         size_base = 120
         size_listening = 160
         size_processing = 175
@@ -1511,8 +1518,10 @@ class DesktopOrbAgent:
                 draw_orb(size_base, "idle")
 
         def center_main():
-            x, y, w, h = main
+            # Snap to the center of the largest monitor for activation.
+            x, y, w, h = pick_main_monitor_rect()
             root.geometry(f"{220}x{220}+{int(x + (w-220)/2)}+{int(y + (h-220)/2)}")
+
 
         def place(posx, posy):
             root.geometry(f"{220}x{220}+{int(posx)}+{int(posy)}")
@@ -1527,6 +1536,98 @@ class DesktopOrbAgent:
             _agent_state["listening"] = True
             center_main()
             update_mode()
+
+        # Click-to-type UI
+        input_var = tk.StringVar()
+        input_entry = None
+        send_btn = None
+        input_msg = None
+        ui_open = False
+
+        def show_click_prompt():
+            nonlocal ui_open, input_entry, send_btn, input_msg
+            if ui_open:
+                return
+            ui_open = True
+
+            # Magnet/grow effect
+            nonlocal listening, processing
+            if processing:
+                return
+            listening = False
+            processing = False
+            update_mode()
+
+            # Ensure the window is focused for typing
+            # (on some systems, focus may require a brief lift)
+            try:
+                root.deiconify()
+                root.lift()
+            except Exception:
+                pass
+
+            # Position input next to orb window
+            # Root geometry is orb size; place input just to the right.
+            gx = root.winfo_rootx()
+            gy = root.winfo_rooty()
+
+            # Input field is drawn in the same canvas area using tk widgets.
+            frame = tk.Frame(root, bg="#111111")
+            frame.place(x=220, y=0, width=240, height=220)
+
+            input_msg = tk.Label(frame, text="Type command", fg="#ff9500", bg="#111111", font=("Arial", 10, "bold"))
+            input_msg.pack(pady=(10, 6))
+
+            input_entry = tk.Entry(frame, textvariable=input_var, width=24, font=("Arial", 10))
+            input_entry.pack(pady=(0, 8))
+            send_btn = tk.Button(frame, text="Send", command=lambda: submit_prompt(frame), width=12)
+            send_btn.pack()
+
+            def submit_prompt(fr):
+                nonlocal ui_open
+                txt = input_var.get().strip()
+                input_var.set("")
+                ui_open = False
+                try:
+                    fr.destroy()
+                except Exception:
+                    pass
+                if not txt:
+                    return
+                # Processing state + snap to center
+                nonlocal listening, processing
+                listening = False
+                processing = True
+                _agent_state["listening"] = False
+                _agent_state["processing"] = True
+                center_main()
+                update_mode()
+                _agent_cmd_queue.put(txt)
+                # Turn processing back off after action run via poll loop
+
+            try:
+                input_entry.focus_force()
+            except Exception:
+                pass
+
+        def on_orb_click(_event=None):
+            # Pause drift and show typing prompt
+            try:
+                # Magnet effect: grow mode briefly by switching to listening
+                nonlocal listening, processing
+                if _agent_state.get("processing"):
+                    return
+                listening = True
+                _agent_state["listening"] = True
+                update_mode()
+                # show prompt immediately
+                show_click_prompt()
+            finally:
+                pass
+
+        # Bind click on the orb canvas region
+        canvas.bind("<Button-1>", on_orb_click)
+
 
         if keyboard is not None:
             # keyboard module uses global hotkeys; must run in main thread on some systems.
@@ -1562,26 +1663,25 @@ class DesktopOrbAgent:
                 # resume drift
                 update_mode()
 
-            # Drift
+            # Drift (wrap-around across the full virtual desktop so it works on all screens)
             if drift_enabled and not processing:
-                mx, my, mw, mh = main
-                # move within main monitor bounds
                 pos[0] += vel[0]
                 pos[1] += vel[1]
 
-                # bounce on edges (main monitor)
-                if pos[0] < mx:
-                    pos[0] = mx
-                    vel[0] *= -1
-                if pos[1] < my:
-                    pos[1] = my
-                    vel[1] *= -1
-                if pos[0] > mx + mw - 220:
-                    pos[0] = mx + mw - 220
-                    vel[0] *= -1
-                if pos[1] > my + mh - 220:
-                    pos[1] = my + mh - 220
-                    vel[1] *= -1
+                # Wrap around the virtual bounds
+                if wrap:
+                    if pos[0] < min_x:
+                        pos[0] = max_x - 220
+                    if pos[0] > max_x - 220:
+                        pos[0] = min_x
+                    if pos[1] < min_y:
+                        pos[1] = max_y - 220
+                    if pos[1] > max_y - 220:
+                        pos[1] = min_y
+                else:
+                    # Fallback: clamp
+                    pos[0] = max(min(pos[0], max_x - 220), min_x)
+                    pos[1] = max(min(pos[1], max_y - 220), min_y)
 
                 place(pos[0], pos[1])
 
