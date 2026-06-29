@@ -6,6 +6,8 @@ Multi-user, persistent memory, PC actions, screenshot vision, .md/.txt context r
 
 import json, os, re, subprocess, platform, webbrowser, tempfile, base64, io, hashlib, time
 from pathlib import Path
+import threading
+import queue
 from datetime import datetime
 from typing import Optional
 
@@ -1343,6 +1345,378 @@ async def chat_ws(ws: WebSocket, uid: str):
 
     except WebSocketDisconnect:
         pass
+
+# ── Desktop Orb Agent (always-on-top) ──────────────────────────────────────
+# NOTE: This uses optional dependencies. If they are missing, the orb will still run
+# but automation/listening will fall back to non-invasive behavior.
+
+DESKTOP_AGENT_ENABLED = True
+DESKTOP_AGENT_HOTKEY = "ctrl+shift+k"  # can be changed later
+
+# UDP-ish queue for passing recognized commands into the agent loop
+_agent_cmd_queue: "queue.Queue[str]" = queue.Queue()
+_agent_state = {
+    "listening": False,
+    "processing": False,
+    "shutdown": False,
+}
+
+
+def get_desktop_monitors():
+    """Return list of monitor rectangles: [(x, y, w, h), ...]. Windows only for now."""
+    try:
+        from screeninfo import get_monitors  # optional
+        mons = get_monitors()
+        return [(m.x, m.y, m.width, m.height) for m in mons]
+    except Exception:
+        # Fallback: single primary monitor based on pyautogui
+        try:
+            import pyautogui
+            w, h = pyautogui.size()
+            return [(0, 0, w, h)]
+        except Exception:
+            return [(0, 0, 1920, 1080)]
+
+
+def pick_main_monitor_rect():
+    mons = get_desktop_monitors()
+    # Choose the monitor with the largest area
+    best = max(mons, key=lambda r: r[2] * r[3])
+    return best
+
+
+class DesktopOrbAgent:
+    def __init__(self):
+        self._t = None
+        self._ui = None
+
+    def start(self):
+        if not DESKTOP_AGENT_ENABLED:
+            return
+        self._t = threading.Thread(target=self._run, daemon=True)
+        self._t.start()
+
+    def _run(self):
+        # Try to create an always-on-top transparent window with an orb.
+        # We’ll use tkinter because it’s in stdlib and keeps changes self-contained.
+        try:
+            import tkinter as tk
+        except Exception:
+            return
+
+        try:
+            # Keyboard/hotkey support
+            import keyboard  # optional
+        except Exception:
+            keyboard = None
+
+        try:
+            import pyautogui  # optional for size and automation fallbacks
+        except Exception:
+            pyautogui = None
+
+        # Tk UI setup
+        root = tk.Tk()
+        self._ui = root
+        root.title("Kyrox Orb")
+        root.overrideredirect(True)  # borderless
+        root.attributes("-topmost", True)
+
+        # Make background fully transparent-ish (Windows: use a specific key color)
+        # Tk supports color key transparency on Windows.
+        ORB_BG = "#00ff00"  # key color
+        root.configure(bg=ORB_BG)
+        root.wm_attributes("-transparentcolor", ORB_BG)
+
+        # Canvas draws the rings + orb
+        canvas = tk.Canvas(root, width=220, height=220, highlightthickness=0, bg=ORB_BG)
+        canvas.pack()
+
+        # Internal animation vars
+        mons = get_desktop_monitors()
+        main = pick_main_monitor_rect()
+        drift_enabled = True
+        pos = [main[0] + main[2] * 0.15, main[1] + main[3] * 0.25]
+        vel = [3.2, 2.6]
+        size_base = 120
+        size_listening = 160
+        size_processing = 175
+        listening = False
+        processing = False
+
+        # Draw helpers
+        def draw_orb(scale, mode):
+            canvas.delete("all")
+            s = scale
+            cx, cy = 110, 110
+            # Orb circle
+            border = "#ffffff" if mode in ("listening", "processing") else "#888888"
+            fill = "#111111" if mode == "processing" else "#111111"
+            if mode == "listening":
+                border = "#ff9500"
+            if mode == "processing":
+                border = "#ffffff"
+
+            r_outer = s / 2
+            canvas.create_oval(cx - r_outer, cy - r_outer, cx + r_outer, cy + r_outer,
+                               outline=border, width=2, fill=fill)
+
+            # Rings (matching CSS conceptually)
+            # r1/r2/r3 rotate by time: we emulate with angles not full fidelity.
+            t = time.time()
+            # ring segments
+            def ring(radius, color, ang_speed):
+                ang = (t * ang_speed) % (2 * 3.14159)
+                # create an arc
+                a1 = (ang * 180 / 3.14159) % 360
+                a2 = a1 + 70
+                canvas.create_arc(cx - radius, cy - radius, cx + radius, cy + radius,
+                                   start=a1, extent=70, style=tk.ARC, outline=color, width=2)
+
+            ring(76 * (s / size_base), "#ffffff", 1.0)
+            ring(88 * (s / size_base), "#ffffff", -0.8)
+            ring(98 * (s / size_base), "#ffffff", 0.55)
+
+            # waveform bars when listening/processing
+            if mode in ("listening", "processing"):
+                # show listening text at top area
+                canvas.create_text(cx, cy + r_outer + 16, text=("LISTENING…" if mode == "listening" else "PROCESSING…"),
+                                   fill=("#ff9500" if mode == "listening" else "#cccccc"),
+                                   font=("Arial", 9, "bold"))
+                # waveform bars
+                bar_x = cx - 44
+                for i in range(11):
+                    h = 5 + (abs((i - 5) * 3) % 22)
+                    if mode == "processing":
+                        h = min(28, h + 6)
+                    canvas.create_rectangle(bar_x + i * 8, cy + 38, bar_x + i * 8 + 3, cy + 38 - h,
+                                            fill=("#888888" if mode == "processing" else "#888888"), outline="")
+
+            # Orb label
+            canvas.create_text(cx, cy - 6, text="KYROX", fill="#f0f0f0", font=("Arial", 14, "bold"))
+            sub = "TAP TO SPEAK"
+            if mode == "listening":
+                sub = "LISTENING"
+            elif mode == "processing":
+                sub = "RUNNING"
+            canvas.create_text(cx, cy + 18, text=sub, fill="#333333", font=("Arial", 9, "bold"))
+
+        def update_mode():
+            nonlocal listening, processing
+            if processing:
+                draw_orb(size_processing, "processing")
+            elif listening:
+                draw_orb(size_listening, "listening")
+            else:
+                draw_orb(size_base, "idle")
+
+        def center_main():
+            x, y, w, h = main
+            root.geometry(f"{220}x{220}+{int(x + (w-220)/2)}+{int(y + (h-220)/2)}")
+
+        def place(posx, posy):
+            root.geometry(f"{220}x{220}+{int(posx)}+{int(posy)}")
+
+        # Hotkey binding
+        def on_hotkey():
+            # Toggle listening
+            if _agent_state.get("processing"):
+                return
+            nonlocal listening
+            listening = True
+            _agent_state["listening"] = True
+            center_main()
+            update_mode()
+
+        if keyboard is not None:
+            # keyboard module uses global hotkeys; must run in main thread on some systems.
+            try:
+                keyboard.add_hotkey(DESKTOP_AGENT_HOTKEY, on_hotkey)
+            except Exception:
+                pass
+
+        # Command processing loop (separate in same thread via periodic polling)
+        def poll_commands():
+            nonlocal listening, processing, drift_enabled, vel
+            try:
+                cmd = _agent_cmd_queue.get_nowait()
+            except queue.Empty:
+                cmd = None
+
+            if cmd:
+                # Enter processing state
+                listening = False
+                processing = True
+                _agent_state["listening"] = False
+                _agent_state["processing"] = True
+                center_main()
+                update_mode()
+
+                # Ask Kyrox backend to convert cmd to action blocks.
+                # We will reuse OpenRouter/Ollama directly here by calling existing helper code in-process.
+                # If backend API keys aren’t set, we just revert.
+                _process_command(cmd)
+
+                processing = False
+                _agent_state["processing"] = False
+                # resume drift
+                update_mode()
+
+            # Drift
+            if drift_enabled and not processing:
+                mx, my, mw, mh = main
+                # move within main monitor bounds
+                pos[0] += vel[0]
+                pos[1] += vel[1]
+
+                # bounce on edges (main monitor)
+                if pos[0] < mx:
+                    pos[0] = mx
+                    vel[0] *= -1
+                if pos[1] < my:
+                    pos[1] = my
+                    vel[1] *= -1
+                if pos[0] > mx + mw - 220:
+                    pos[0] = mx + mw - 220
+                    vel[0] *= -1
+                if pos[1] > my + mh - 220:
+                    pos[1] = my + mh - 220
+                    vel[1] *= -1
+
+                place(pos[0], pos[1])
+
+            root.after(80, poll_commands)
+
+        # Basic command handler placeholder - will be wired to Kyrox action blocks
+        def _process_command(text_cmd: str):
+            # 1) Generate an action block plan by calling the model pipeline.
+            # For now, we reuse the same FREE_MODELS and OPENROUTER_URL logic.
+            # 2) Execute each action via execute_pc_action.
+            try:
+                settings = load_settings()
+                backend = settings.get("backend", "openrouter")
+                sys_prompt = settings.get("system_prompt", DEFAULT_SYSTEM_PROMPT)
+                api_key = settings.get("openrouter_key", "").strip()
+
+                # Force an action-only response from the model by adding a small instruction.
+                agent_prompt = (
+                    sys_prompt
+                    + "\n\nConvert the user's request into Kyrox action blocks. "
+                      "Return only the action block(s) in ```action ...``` format when possible.\n\n"
+                    + f"USER REQUEST: {text_cmd}\n"
+                )
+
+                messages = [{"role": "system", "content": agent_prompt}]
+
+                full_response = ""
+                if backend == "openrouter" and api_key:
+                    # Blocking call; this is okay because it runs on agent thread
+                    # (not the FastAPI event loop).
+                    idx = settings.get("current_model_index", 0)
+                    model = FREE_MODELS[idx % len(FREE_MODELS)]
+                    # non-streaming request for simplicity
+                    with httpx.Client(timeout=120) as client:
+                        r = client.post(
+                            OPENROUTER_URL,
+                            headers={
+                                "Authorization": f"Bearer {api_key}",
+                                "Content-Type": "application/json",
+                                "HTTP-Referer": "https://kyrox.nemea.uk",
+                                "X-Title": "Kyrox AI",
+                            },
+                            json={
+                                "model": model,
+                                "messages": messages,
+                                "max_tokens": 800,
+                            },
+                        )
+                        r.raise_for_status()
+                        data = r.json()
+                        full_response = data.get("choices", [{}])[0].get("message", {}).get("content", "") or ""
+                elif backend == "ollama":
+                    with httpx.Client(timeout=120) as client:
+                        r = client.post(
+                            f"{settings['ollama_url']}/api/chat",
+                            json={
+                                "model": settings.get("ollama_model", "llama3"),
+                                "messages": messages,
+                                "stream": False,
+                            },
+                        )
+                        r.raise_for_status()
+                        data = r.json()
+                        full_response = data.get("message", {}).get("content", "") or ""
+                else:
+                    return
+
+                # Parse action blocks
+                action_pattern = re.compile(r"```action\\s*(.*?)\\s*```", re.DOTALL)
+                actions_found = []
+                for m2 in action_pattern.finditer(full_response):
+                    try:
+                        actions_found.append(json.loads(m2.group(1)))
+                    except Exception:
+                        pass
+
+                # Execute actions
+                for act in actions_found:
+                    execute_pc_action(act, settings)
+
+            except Exception:
+                # swallow; we don't want orb crash
+                return
+
+        # Initialize position
+        place(pos[0], pos[1])
+        update_mode()
+
+        # Start command listener via speech recognition only when hotkey pressed.
+        # Since implementing a full global mic listener is heavy, we do it only during listening.
+        # Voice command will prompt for a single utterance.
+        def start_voice_once():
+            try:
+                import speech_recognition as sr  # optional
+            except Exception:
+                return None
+
+            r = sr.Recognizer()
+            with sr.Microphone() as source:
+                r.adjust_for_ambient_noise(source, duration=0.3)
+                audio = r.listen(source, timeout=8, phrase_time_limit=12)
+            try:
+                return r.recognize_google(audio)
+            except Exception:
+                try:
+                    return r.recognize_sphinx(audio)
+                except Exception:
+                    return None
+
+        def tick_voice():
+            nonlocal listening
+            if listening and not processing:
+                cmd = start_voice_once()
+                if cmd:
+                    _agent_cmd_queue.put(cmd)
+                listening = False
+                _agent_state["listening"] = False
+                update_mode()
+            root.after(250, tick_voice)
+
+        tick_voice()
+        root.after(80, poll_commands)
+        root.mainloop()
+
+
+# Start the agent automatically when the backend starts
+_desktop_agent = DesktopOrbAgent()
+
+@app.on_event("startup")
+async def _startup_desktop_agent():
+    try:
+        _desktop_agent.start()
+    except Exception:
+        pass
+
 
 # ── Startup info ───────────────────────────────────────────────────────────
 @app.get("/api/startup-info")
