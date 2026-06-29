@@ -151,7 +151,7 @@ echo   Press Ctrl+C to stop
 echo.
 cd /d "$InstallDir"
 start "" /B pythonw lens.py
-python -m uvicorn core.main:app --host 0.0.0.0 --port 80
+python -m uvicorn main:app --host 0.0.0.0 --port 80 --app-dir "%~dp0core"
 "@
   Set-Content -Path "$launcherDir\kyrox.cmd" -Value $cmd -Encoding ASCII
 
@@ -163,7 +163,7 @@ Write-Host "  From your phone (same WiFi): http://`$(hostname)/kyrox" -Foregroun
 Write-Host "  Press Ctrl+C to stop`n" -ForegroundColor DarkGray
 # Launch Lens overlay in background (no console window)
 Start-Process pythonw -ArgumentList "$InstallDir\lens.py" -WindowStyle Hidden
-python -m uvicorn core.main:app --host 0.0.0.0 --port 80
+python -m uvicorn main:app --host 0.0.0.0 --port 80 --app-dir "$InstallDir\core"
 "@
   Set-Content -Path "$launcherDir\kyrox.ps1" -Value $ps1 -Encoding UTF8
 
@@ -222,7 +222,7 @@ function Launch-Kyrox {
     Start-Process "http://127.0.0.1/kyrox" -ErrorAction SilentlyContinue
     # Launch Lens overlay silently in background
     Start-Process pythonw -ArgumentList "$InstallDir\lens.py" -WindowStyle Hidden
-    python -m uvicorn core.main:app --host 0.0.0.0 --port 80
+    python -m uvicorn main:app --host 0.0.0.0 --port 80 --app-dir "$InstallDir\core"
   }
 }
 
