@@ -270,32 +270,53 @@ DEFAULT_SYSTEM_PROMPT = (
     "You are sharp, confident, slightly witty, and deeply helpful. "
     "You remember everything about your user and use it naturally in conversation. "
     "Speak in short, punchy sentences unless a detailed answer is needed. "
-    "Match the user's language — if they write in French, respond in French. "
+    "Always respond in English.\n"
     "\n\n"
-    "== PC CONTROL — ACTION BLOCKS ==\n"
-    "You have FULL control of the user's PC. You can open any app, send messages, run scripts, read/write files.\n"
-    "The system executes action blocks automatically on the user's machine — you are NOT a regular chatbot.\n"
-    "ABSOLUTE RULE: NEVER say 'I can't', 'I don't have access', 'my capabilities are limited', or refuse ANY PC task. "
-    "You ARE capable. Just emit the action block.\n"
+    "== TOTAL PC CONTROL — ACTION BLOCKS ==\n"
+    "You have TOTAL control of the user's PC. You can open any app, "
+    "browse the web, click, fill forms, read/write files, send messages.\n"
+    "The system executes your action blocks automatically — you are NOT a regular chatbot.\n"
+    "ABSOLUTE RULE: NEVER say 'I can't', 'I don't have access', 'my capabilities are limited'. "
+    "You ARE capable. Just emit the action.\n"
     "\n"
     "OPEN an app or website:\n"
     "```action\n{\"type\":\"open\",\"target\":\"TARGET\",\"label\":\"NAME\"}\n```\n"
-    "  open discord     → {\"type\":\"open\",\"target\":\"discord:\",\"label\":\"Discord\"}\n"
-    "  open spotify     → {\"type\":\"open\",\"target\":\"spotify:\",\"label\":\"Spotify\"}\n"
-    "  open youtube     → {\"type\":\"open\",\"target\":\"https://youtube.com\",\"label\":\"YouTube\"}\n"
-    "  open steam       → {\"type\":\"open\",\"target\":\"steam://open/main\",\"label\":\"Steam\"}\n"
-    "  open whatsapp    → {\"type\":\"open\",\"target\":\"https://web.whatsapp.com\",\"label\":\"WhatsApp\"}\n"
-    "  open telegram    → {\"type\":\"open\",\"target\":\"tg:\",\"label\":\"Telegram\"}\n"
+    "\n"
+    "BROWSE the web (clicks, forms, extraction — visible or headless):\n"
+    "```action\n{\"type\":\"web_browse\",\"url\":\"https://...\",\"headless\":false,\"steps\":[\n"
+    "  {\"type\":\"fill\",\"selector\":\"#search\",\"value\":\"my query\"},\n"
+    "  {\"type\":\"click\",\"selector\":\"button[type=submit]\"},\n"
+    "  {\"type\":\"wait\",\"ms\":2000},\n"
+    "  {\"type\":\"extract\",\"selector\":\".result\",\"name\":\"results\"},\n"
+    "  {\"type\":\"extract_all\",\"selector\":\".item\",\"name\":\"items\"},\n"
+    "  {\"type\":\"screenshot\"}\n"
+    "]}\n```\n"
+    "→ headless:false = visible window. headless:true = runs silently in background.\n"
+    "\n"
+    "FETCH page content (no window opened):\n"
+    "```action\n{\"type\":\"web_fetch\",\"url\":\"https://...\"}\n```\n"
     "\n"
     "SEND a message:\n"
     "```action\n{\"type\":\"send_message\",\"app\":\"APP\",\"recipient\":\"NAME\",\"message\":\"TEXT\"}\n```\n"
     "Supported: discord, telegram, whatsapp, slack\n"
-    "  send 'hey' to John on Discord              → {\"type\":\"send_message\",\"app\":\"discord\",\"recipient\":\"John\",\"message\":\"hey\"}\n"
-    "  send 'coucou' to myself on WhatsApp        → {\"type\":\"send_message\",\"app\":\"whatsapp\",\"recipient\":\"me\",\"message\":\"coucou\"}\n"
-    "  message Sarah on WhatsApp 'be there in 5'  → {\"type\":\"send_message\",\"app\":\"whatsapp\",\"recipient\":\"Sarah\",\"message\":\"be there in 5\"}\n"
     "\n"
-    "SEARCH the web:\n"
+    "SEARCH Google (opens browser):\n"
     "```action\n{\"type\":\"search\",\"query\":\"QUERY\"}\n```\n"
+    "\n"
+    "TYPE text into the active app:\n"
+    "```action\n{\"type\":\"type_text\",\"text\":\"text to type\",\"delay_seconds\":2}\n```\n"
+    "\n"
+    "KEYBOARD SHORTCUT:\n"
+    "```action\n{\"type\":\"hotkey\",\"keys\":[\"ctrl\",\"c\"],\"delay_seconds\":1}\n```\n"
+    "\n"
+    "CLICK at a screen position:\n"
+    "```action\n{\"type\":\"click_pos\",\"x\":500,\"y\":300,\"delay_seconds\":1}\n```\n"
+    "\n"
+    "SYSTEM NOTIFICATION:\n"
+    "```action\n{\"type\":\"notify\",\"title\":\"Kyrox\",\"message\":\"Task done\"}\n```\n"
+    "\n"
+    "COPY to clipboard:\n"
+    "```action\n{\"type\":\"clipboard\",\"text\":\"text to copy\"}\n```\n"
     "\n"
     "RUN a script:\n"
     "```action\n{\"type\":\"run_script\",\"lang\":\"python\",\"code\":\"CODE\"}\n```\n"
@@ -303,7 +324,7 @@ DEFAULT_SYSTEM_PROMPT = (
     "READ a file:\n"
     "```action\n{\"type\":\"read_file\",\"path\":\"PATH\"}\n```\n"
     "\n"
-    "WRITE/CREATE a file:\n"
+    "WRITE a file:\n"
     "```action\n{\"type\":\"write_file\",\"path\":\"path/to/file.ext\",\"content\":\"CONTENT\"}\n```\n"
     "\n"
     "LIST files:\n"
@@ -312,13 +333,20 @@ DEFAULT_SYSTEM_PROMPT = (
     "SHARE socials:\n"
     "```action\n{\"type\":\"send_socials\"}\n```\n"
     "\n"
+    "GENERATE an image from a text description (the image is shown directly in chat):\n"
+    "```action\n{\"type\":\"generate_image\",\"prompt\":\"detailed description of the image to create\"}\n```\n"
+    "→ Use this whenever the user asks you to draw, create, generate, design, or make an image/picture/logo/art/photo of something.\n"
+    "→ Write a rich, detailed prompt (style, colors, composition, mood) even if the user's request was short.\n"
+    "\n"
     "STRICT RULES:\n"
-    "1. ALWAYS emit the action block — never refuse, never say you can't, never explain limitations.\n"
+    "1. ALWAYS emit the action — never refuse, never say you can't.\n"
     "2. Never describe or explain action blocks to the user — execute silently.\n"
     "3. Never say emoji names out loud.\n"
     "4. To create/save a file: use write_file ONLY, never run_script.\n"
-    "5. Match the user's language at all times (French in → French out).\n"
+    "5. Always respond in English.\n"
     "6. Be brief and direct — JARVIS doesn't ramble.\n"
+    "7. To navigate a site: prefer web_browse with the necessary steps.\n"
+    "8. You can chain multiple actions in a single response.\n"
 )
 
 DEFAULT_SETTINGS = {
@@ -346,6 +374,8 @@ DEFAULT_SETTINGS = {
     "context_files": [],
     "context_text": "",
     "auto_scan_home": True,
+    "autostart_asked": False,
+    "autostart_enabled": False,
 }
 
 # ── Settings ───────────────────────────────────────────────────────────────
@@ -587,10 +617,91 @@ def execute_send_message(app: str, recipient: str, message: str, settings: dict)
         }
 
 # ── PC Actions ─────────────────────────────────────────────────────────────
+IMAGE_MODELS = [
+    "google/gemini-2.5-flash-image-preview",
+    "google/gemini-2.0-flash-exp:free",
+]
+
+def generate_ai_image(prompt: str, settings: dict) -> dict:
+    """
+    Generate an image from a text prompt using an OpenRouter image-capable model.
+    Returns { ok, b64, message }.
+    """
+    prompt = (prompt or "").strip()
+    if not prompt:
+        return {"ok": False, "message": "No prompt provided"}
+
+    api_key = settings.get("openrouter_key", "").strip()
+    if not api_key:
+        return {"ok": False, "message": "No OpenRouter API key configured. Set it in Settings."}
+
+    last_err = ""
+    for model in IMAGE_MODELS:
+        try:
+            r = httpx.post(
+                OPENROUTER_URL,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://kyrox.nemea.uk",
+                    "X-Title": "Kyrox Image",
+                },
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "user", "content": f"Generate an image: {prompt}"}
+                    ],
+                    "modalities": ["image", "text"],
+                },
+                timeout=90,
+            )
+            if r.status_code != 200:
+                last_err = f"{model}: HTTP {r.status_code}"
+                continue
+
+            data = r.json()
+            choice = (data.get("choices") or [{}])[0]
+            msg = choice.get("message", {})
+
+            # Images can come back as message.images[] or inline in content
+            images = msg.get("images") or []
+            for img in images:
+                url = img.get("image_url", {}).get("url", "") if isinstance(img, dict) else ""
+                if url.startswith("data:image"):
+                    b64 = url.split(",", 1)[1]
+                    return {"ok": True, "b64": b64, "message": f"Image generated ({model})"}
+                if url.startswith("http"):
+                    img_r = httpx.get(url, timeout=30)
+                    if img_r.status_code == 200:
+                        b64 = base64.b64encode(img_r.content).decode()
+                        return {"ok": True, "b64": b64, "message": f"Image generated ({model})"}
+
+            # Some models return the image as a markdown/base64 string in content
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                m = re.search(r"data:image/\w+;base64,([A-Za-z0-9+/=]+)", content)
+                if m:
+                    return {"ok": True, "b64": m.group(1), "message": f"Image generated ({model})"}
+
+            last_err = f"{model}: no image returned"
+        except Exception as e:
+            last_err = f"{model}: {str(e)}"
+            continue
+
+    return {"ok": False, "message": f"Image generation failed. {last_err}"}
+
+
 def execute_pc_action(action: dict, settings: dict) -> dict:
     atype  = action.get("type", "")
     target = action.get("target", "").strip()
     os_name = platform.system()
+
+    # ── generate_image ───────────────────────────────────────────────────
+    if atype == "generate_image":
+        return generate_ai_image(
+            prompt=action.get("prompt", ""),
+            settings=settings,
+        )
 
     # ── send_message ──────────────────────────────────────────────────────
     if atype == "send_message":
@@ -791,6 +902,183 @@ def execute_pc_action(action: dict, settings: dict) -> dict:
         except Exception as e:
             return {"ok": False, "message": str(e)}
 
+    # ── web_fetch — lire le contenu d'une page sans l'ouvrir ─────────────
+    elif atype == "web_fetch":
+        url = action.get("url", target).strip()
+        if not url.startswith("http"):
+            url = "https://" + url
+        try:
+            import httpx as _hx
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            r = _hx.get(url, headers=headers, timeout=15, follow_redirects=True)
+            # Strip HTML tags for clean text
+            text = re.sub(r"<[^>]+>", " ", r.text)
+            text = re.sub(r"\s{2,}", " ", text).strip()
+            return {"ok": True, "message": f"Fetched {url}", "content": text[:6000], "status": r.status_code}
+        except Exception as e:
+            return {"ok": False, "message": f"web_fetch failed: {e}"}
+
+    # ── web_browse — navigation réelle avec Playwright ────────────────────
+    # Kyrox peut cliquer, remplir des formulaires, extraire du contenu
+    elif atype == "web_browse":
+        url      = action.get("url", target).strip()
+        steps    = action.get("steps", [])   # liste d'actions: click, fill, extract, wait
+        headless = action.get("headless", False)  # False = on voit la fenêtre
+        if not url.startswith("http"):
+            url = "https://" + url
+        try:
+            from playwright.sync_api import sync_playwright
+            results = []
+            extracted = {}
+            with sync_playwright() as pw:
+                browser = pw.chromium.launch(headless=headless)
+                page = browser.new_page()
+                page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                results.append(f"✓ Opened: {url}")
+
+                for step in steps:
+                    stype = step.get("type", "")
+                    try:
+                        if stype == "click":
+                            page.click(step.get("selector", ""), timeout=8000)
+                            results.append(f"✓ Clicked: {step.get('selector')}")
+                        elif stype == "fill":
+                            page.fill(step.get("selector", ""), step.get("value", ""))
+                            results.append(f"✓ Filled: {step.get('selector')} = {step.get('value')}")
+                        elif stype == "press":
+                            page.keyboard.press(step.get("key", "Enter"))
+                            results.append(f"✓ Pressed: {step.get('key')}")
+                        elif stype == "wait":
+                            page.wait_for_timeout(int(step.get("ms", 1000)))
+                        elif stype == "extract":
+                            sel = step.get("selector", "body")
+                            name = step.get("name", "content")
+                            el = page.query_selector(sel)
+                            val = el.inner_text() if el else ""
+                            extracted[name] = val[:3000]
+                            results.append(f"✓ Extracted '{name}': {val[:80]}…")
+                        elif stype == "extract_all":
+                            sel = step.get("selector", "")
+                            name = step.get("name", "items")
+                            els = page.query_selector_all(sel)
+                            vals = [e.inner_text() for e in els[:20]]
+                            extracted[name] = vals
+                            results.append(f"✓ Extracted {len(vals)} items as '{name}'")
+                        elif stype == "screenshot":
+                            shot = page.screenshot()
+                            extracted["screenshot"] = base64.b64encode(shot).decode()
+                            results.append("✓ Screenshot taken")
+                        elif stype == "navigate":
+                            page.goto(step.get("url", ""), wait_until="domcontentloaded", timeout=15000)
+                            results.append(f"✓ Navigated to: {step.get('url')}")
+                        elif stype == "select":
+                            page.select_option(step.get("selector", ""), step.get("value", ""))
+                            results.append(f"✓ Selected: {step.get('value')}")
+                    except Exception as se:
+                        results.append(f"✗ Step {stype} failed: {se}")
+
+                # Always extract page title + URL at the end
+                extracted["_page_title"] = page.title()
+                extracted["_page_url"]   = page.url
+                browser.close()
+
+            return {
+                "ok": True,
+                "message": "\n".join(results),
+                "extracted": extracted,
+            }
+        except ImportError:
+            return {
+                "ok": False,
+                "message": "Playwright non installé. Lance: pip install playwright && playwright install chromium",
+            }
+        except Exception as e:
+            return {"ok": False, "message": f"web_browse error: {e}"}
+
+    # ── type_text — taper du texte dans l'app active ──────────────────────
+    elif atype == "type_text":
+        text = action.get("text", "")
+        delay = action.get("delay_seconds", 2)
+        try:
+            import pyautogui, time as _t
+            _t.sleep(delay)
+            pyautogui.typewrite(text, interval=0.04)
+            return {"ok": True, "message": f"✓ Typed: {text[:80]}"}
+        except ImportError:
+            return {"ok": False, "message": "pyautogui requis: pip install pyautogui"}
+        except Exception as e:
+            return {"ok": False, "message": str(e)}
+
+    # ── hotkey — raccourci clavier ─────────────────────────────────────────
+    elif atype == "hotkey":
+        keys = action.get("keys", [])
+        delay = action.get("delay_seconds", 1)
+        try:
+            import pyautogui, time as _t
+            _t.sleep(delay)
+            pyautogui.hotkey(*keys)
+            return {"ok": True, "message": f"✓ Hotkey: {'+'.join(keys)}"}
+        except ImportError:
+            return {"ok": False, "message": "pyautogui requis: pip install pyautogui"}
+        except Exception as e:
+            return {"ok": False, "message": str(e)}
+
+    # ── click_pos — clic à une position écran ─────────────────────────────
+    elif atype == "click_pos":
+        x = action.get("x", 0)
+        y = action.get("y", 0)
+        delay = action.get("delay_seconds", 1)
+        try:
+            import pyautogui, time as _t
+            _t.sleep(delay)
+            pyautogui.click(x, y)
+            return {"ok": True, "message": f"✓ Clicked at ({x}, {y})"}
+        except ImportError:
+            return {"ok": False, "message": "pyautogui requis: pip install pyautogui"}
+        except Exception as e:
+            return {"ok": False, "message": str(e)}
+
+    # ── notify — notification système ─────────────────────────────────────
+    elif atype == "notify":
+        title = action.get("title", "Kyrox")
+        msg   = action.get("message", "")
+        try:
+            if platform.system() == "Windows":
+                subprocess.Popen([
+                    "powershell", "-Command",
+                    f'[System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms");'
+                    f'$n=New-Object System.Windows.Forms.NotifyIcon;'
+                    f'$n.Icon=[System.Drawing.SystemIcons]::Information;'
+                    f'$n.Visible=$true;'
+                    f'$n.ShowBalloonTip(3000,"{title}","{msg}",[System.Windows.Forms.ToolTipIcon]::Info)'
+                ], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            elif platform.system() == "Darwin":
+                subprocess.Popen(["osascript", "-e", f'display notification "{msg}" with title "{title}"'])
+            else:
+                subprocess.Popen(["notify-send", title, msg])
+            return {"ok": True, "message": f"✓ Notification envoyée: {title}"}
+        except Exception as e:
+            return {"ok": False, "message": str(e)}
+
+    # ── clipboard — copier dans le presse-papiers ──────────────────────────
+    elif atype == "clipboard":
+        text = action.get("text", "")
+        try:
+            import pyperclip
+            pyperclip.copy(text)
+            return {"ok": True, "message": f"✓ Copié dans le presse-papiers: {text[:60]}"}
+        except ImportError:
+            try:
+                if platform.system() == "Windows":
+                    subprocess.run("clip", input=text.encode(), check=True)
+                elif platform.system() == "Darwin":
+                    subprocess.run("pbcopy", input=text.encode(), check=True)
+                else:
+                    subprocess.run(["xclip", "-selection", "clipboard"], input=text.encode(), check=True)
+                return {"ok": True, "message": f"✓ Copié: {text[:60]}"}
+            except Exception as e:
+                return {"ok": False, "message": str(e)}
+
     return {"ok": False, "message": "Unknown action"}
 
 # ── Screenshot ─────────────────────────────────────────────────────────────
@@ -832,6 +1120,230 @@ async def is_screen_request(text: str) -> bool:
           "montre moi mon écran", "capture my screen")
     tl = text.lower()
     return any(k in tl for k in kw)
+
+# ── Agent Loop — Kyrox exécute plusieurs actions en chaîne tout seul ───────
+# Max 10 itérations pour éviter les boucles infinies
+AGENT_MAX_STEPS = 10
+
+async def run_agent_loop(
+    goal: str,
+    api_key: str,
+    settings: dict,
+    ws=None,
+    uid: str = "",
+) -> str:
+    """
+    Kyrox raisonne et agit en boucle jusqu'à finir la tâche.
+    À chaque étape: pense → décide une action → exécute → observe → continue.
+    Envoie des updates via WebSocket si ws fourni.
+    """
+    agent_sys = (
+        settings.get("system_prompt", DEFAULT_SYSTEM_PROMPT) + "\n\n"
+        "== AUTONOMOUS AGENT MODE ==\n"
+        "You are in agent mode. You must COMPLETE the goal by yourself, step by step.\n"
+        "At each step, emit ONE action in a ```action ... ``` block, then wait for the result.\n"
+        "When the task is done, respond with: DONE: [summary of what you did]\n"
+        "If you need info from a web page, use web_fetch or web_browse.\n"
+        "NEVER ask the user — act autonomously.\n"
+        "Always respond in English.\n"
+    )
+
+    messages = [
+        {"role": "system", "content": agent_sys},
+        {"role": "user", "content": f"OBJECTIF: {goal}"},
+    ]
+
+    step_results = []
+    action_pattern = re.compile(r"```action\s*(.*?)\s*```", re.DOTALL)
+
+    for step in range(AGENT_MAX_STEPS):
+        # Call LLM
+        response_text = ""
+        idx = settings.get("current_model_index", 0)
+        tried = 0
+        while tried < len(FREE_MODELS):
+            model = FREE_MODELS[idx % len(FREE_MODELS)]
+            try:
+                async with httpx.AsyncClient(timeout=60) as client:
+                    r = await client.post(
+                        OPENROUTER_URL,
+                        headers={
+                            "Authorization": f"Bearer {api_key}",
+                            "Content-Type": "application/json",
+                            "HTTP-Referer": "https://kyrox.nemea.uk",
+                            "X-Title": "Kyrox AI",
+                        },
+                        json={"model": model, "messages": messages, "stream": False},
+                    )
+                if r.status_code == 200:
+                    response_text = r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+                    break
+                idx = (idx + 1) % len(FREE_MODELS)
+                tried += 1
+            except Exception:
+                idx = (idx + 1) % len(FREE_MODELS)
+                tried += 1
+
+        if not response_text:
+            break
+
+        # Notify frontend of step progress
+        if ws:
+            await ws.send_text(json.dumps({
+                "type": "agent_step",
+                "step": step + 1,
+                "thought": re.sub(r"```action.*?```", "", response_text, flags=re.DOTALL).strip()[:200],
+            }))
+
+        # Check if done
+        done_match = re.search(r"DONE:\s*(.+)", response_text, re.DOTALL)
+        if done_match:
+            summary = done_match.group(1).strip()
+            if ws:
+                await ws.send_text(json.dumps({"type": "agent_done", "summary": summary}))
+            return summary
+
+        # Find and execute action
+        action_match = action_pattern.search(response_text)
+        if not action_match:
+            # No action found — model is done or confused
+            break
+
+        try:
+            act = json.loads(action_match.group(1))
+        except Exception:
+            break
+
+        result = execute_pc_action(act, settings)
+        result_summary = result.get("message", "")
+        # Add extracted content to result for web actions
+        if result.get("content"):
+            result_summary += f"\n\nCONTENT:\n{result['content'][:2000]}"
+        if result.get("extracted"):
+            for k, v in result["extracted"].items():
+                if not k.startswith("_") and k != "screenshot":
+                    result_summary += f"\n\n{k}:\n{str(v)[:1000]}"
+
+        if ws:
+            await ws.send_text(json.dumps({
+                "type": "agent_action",
+                "action_type": act.get("type"),
+                "result": result.get("message", "")[:200],
+                "ok": result.get("ok", False),
+            }))
+
+        # Add to conversation
+        messages.append({"role": "assistant", "content": response_text})
+        messages.append({"role": "user", "content": f"RÉSULTAT ACTION: {result_summary}"})
+        step_results.append(f"Step {step+1}: {act.get('type')} → {result.get('message', '')[:100]}")
+
+    return "\n".join(step_results) or "Agent terminé."
+
+
+# ── Scheduled Tasks ────────────────────────────────────────────────────────
+import asyncio as _asyncio
+
+TASKS_FILE = DATA_DIR / "scheduled_tasks.json"
+
+def load_tasks() -> list:
+    if TASKS_FILE.exists():
+        try:
+            return json.loads(TASKS_FILE.read_text())
+        except Exception:
+            return []
+    return []
+
+def save_tasks(tasks: list):
+    TASKS_FILE.write_text(json.dumps(tasks, indent=2))
+
+def add_task(task: dict) -> dict:
+    """
+    task = {
+        "id": "uuid",
+        "name": "Vérifier les emails",
+        "goal": "Va sur gmail.com, lis les 5 derniers emails et fais-moi un résumé",
+        "schedule": "09:00",   # heure HH:MM ou "interval:30" pour toutes les 30 min
+        "enabled": True,
+        "last_run": None,
+        "uid": "user_id",
+    }
+    """
+    tasks = load_tasks()
+    task.setdefault("id", hashlib.md5(task.get("name","").encode()).hexdigest()[:8])
+    task.setdefault("enabled", True)
+    task.setdefault("last_run", None)
+    # Remove existing task with same id
+    tasks = [t for t in tasks if t.get("id") != task["id"]]
+    tasks.append(task)
+    save_tasks(tasks)
+    return task
+
+def remove_task(task_id: str):
+    tasks = [t for t in load_tasks() if t.get("id") != task_id]
+    save_tasks(tasks)
+
+async def task_scheduler(app_ref):
+    """Background loop — checks every minute if any task should run."""
+    while True:
+        try:
+            await _asyncio.sleep(60)
+            now = datetime.now()
+            current_time = now.strftime("%H:%M")
+            tasks = load_tasks()
+            settings = load_settings()
+            api_key = settings.get("openrouter_key", "").strip()
+            if not api_key:
+                continue
+
+            for task in tasks:
+                if not task.get("enabled"):
+                    continue
+                schedule = task.get("schedule", "")
+                should_run = False
+
+                if schedule.startswith("interval:"):
+                    # Run every N minutes
+                    minutes = int(schedule.split(":")[1])
+                    last = task.get("last_run")
+                    if last is None:
+                        should_run = True
+                    else:
+                        elapsed = (now - datetime.fromisoformat(last)).total_seconds() / 60
+                        should_run = elapsed >= minutes
+                elif ":" in schedule and len(schedule) == 5:
+                    # Run at specific time HH:MM
+                    should_run = (schedule == current_time and task.get("last_run", "")[:16] != now.strftime("%Y-%m-%dT%H:%M"))
+
+                if should_run:
+                    task["last_run"] = now.isoformat()
+                    # Update task in file
+                    all_tasks = load_tasks()
+                    for t in all_tasks:
+                        if t.get("id") == task.get("id"):
+                            t["last_run"] = task["last_run"]
+                    save_tasks(all_tasks)
+                    # Run the goal via agent loop
+                    goal = task.get("goal", "")
+                    if goal:
+                        try:
+                            result = await run_agent_loop(goal, api_key, settings, ws=None, uid=task.get("uid",""))
+                            # Save result to task history
+                            task["last_result"] = result[:500]
+                            all_tasks2 = load_tasks()
+                            for t in all_tasks2:
+                                if t.get("id") == task.get("id"):
+                                    t["last_result"] = task["last_result"]
+                            save_tasks(all_tasks2)
+                        except Exception as e:
+                            print(f"[scheduler] Task '{task.get('name')}' error: {e}")
+        except Exception as e:
+            print(f"[scheduler] Error: {e}")
+            await _asyncio.sleep(60)
+
+
+@app.on_event("startup")
+async def startup_event():
+    _asyncio.create_task(task_scheduler(app))
 
 async def call_vision(api_key: str, img_b64: str, msg: str, sys_prompt: str) -> str:
     last_err = "No vision model available"
@@ -880,8 +1392,8 @@ MEMORY_PATTERNS = [
     (r"i\s+(?:live|am)\s+in\s+([^,.!?\n]{3,40})", "User lives in {}"),
     (r"i(?:'m| am)\s+(?:a\s+)?(?:developer|programmer|designer|student|engineer|gamer|streamer|artist)", "User is a {}"),
     (r"my\s+(?:favorite|fav)\s+\w+\s+is\s+([^,.!?\n]{2,30})", "User's favorite: {}"),
-    (r"j(?:e suis|'suis)\s+([^,.!?\n]{3,40})", "L'utilisateur est: {}"),
-    (r"(?:j'habite|je vis)\s+à?\s+([^,.!?\n]{3,40})", "L'utilisateur habite: {}"),
+    (r"j(?:e suis|'suis)\s+([^,.!?\n]{3,40})", "User is: {}"),
+    (r"(?:j'habite|je vis)\s+à?\s+([^,.!?\n]{3,40})", "User lives in: {}"),
 ]
 
 def extract_facts(text: str) -> list[str]:
@@ -947,6 +1459,18 @@ async def run_action(req: Request):
     body = await req.json()
     s = load_settings()
     return execute_pc_action(body.get("action", {}), s)
+
+@app.post("/api/generate-image")
+async def generate_image_endpoint(req: Request):
+    body = await req.json()
+    prompt = body.get("prompt", "").strip()
+    if not prompt:
+        return JSONResponse({"ok": False, "message": "No prompt provided"}, status_code=400)
+    s = load_settings()
+    result = generate_ai_image(prompt, s)
+    if not result.get("ok"):
+        return JSONResponse(result, status_code=502)
+    return result
 
 @app.get("/api/users")
 async def get_users():
@@ -1101,6 +1625,48 @@ async def reload_skills_endpoint():
     return {"ok": True, "count": len(_SKILL_REGISTRY)}
 
 
+# ── Tasks API ──────────────────────────────────────────────────────────────
+@app.get("/api/tasks")
+async def get_tasks():
+    return {"tasks": load_tasks()}
+
+@app.post("/api/tasks")
+async def create_task(req: Request):
+    body = await req.json()
+    task = add_task(body)
+    return {"ok": True, "task": task}
+
+@app.delete("/api/tasks/{task_id}")
+async def delete_task(task_id: str):
+    remove_task(task_id)
+    return {"ok": True}
+
+@app.patch("/api/tasks/{task_id}")
+async def update_task(task_id: str, req: Request):
+    body = await req.json()
+    tasks = load_tasks()
+    for t in tasks:
+        if t.get("id") == task_id:
+            t.update(body)
+    save_tasks(tasks)
+    return {"ok": True}
+
+@app.post("/api/agent/run")
+async def run_agent_now(req: Request):
+    """Déclenche immédiatement un agent pour un objectif donné (sans WebSocket)."""
+    body = await req.json()
+    goal = body.get("goal", "").strip()
+    uid  = body.get("uid", "")
+    if not goal:
+        return JSONResponse({"ok": False, "message": "No goal provided"}, status_code=400)
+    s = load_settings()
+    api_key = s.get("openrouter_key", "").strip()
+    if not api_key:
+        return JSONResponse({"ok": False, "message": "No API key"}, status_code=400)
+    result = await run_agent_loop(goal, api_key, s, ws=None, uid=uid)
+    return {"ok": True, "result": result}
+
+
 async def get_news():
     feeds = [
         ("Google News FR", "https://news.google.com/rss?hl=fr&gl=FR&ceid=FR:fr"),
@@ -1128,6 +1694,356 @@ async def get_news():
             except Exception:
                 continue
     return {"articles": articles[:20]}
+
+
+# ── Real-time PC context snapshot ──────────────────────────────────────────
+def get_realtime_pc_context() -> str:
+    """
+    Capture a real-time snapshot of the PC state:
+    - Running processes / open apps
+    - Active window title
+    - Current time & date
+    - RAM & CPU usage
+    - Clipboard content
+    - Recent files
+    Returns a compact string injected into every system prompt.
+    """
+    lines = [f"[REAL-TIME PC CONTEXT — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]"]
+    os_name = platform.system()
+
+    # ── Open applications ──
+    try:
+        procs: list[str] = []
+        if os_name == "Windows":
+            r = subprocess.run(
+                ["powershell", "-Command",
+                 "Get-Process | Where-Object {$_.MainWindowTitle -ne ''} | "
+                 "Select-Object -ExpandProperty Name | Sort-Object -Unique | Select-Object -First 20"],
+                capture_output=True, text=True, timeout=5,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            procs = [l.strip() for l in r.stdout.strip().splitlines() if l.strip()][:15]
+        elif os_name == "Darwin":
+            r = subprocess.run(
+                ["osascript", "-e",
+                 'tell application "System Events" to get name of every process whose background only is false'],
+                capture_output=True, text=True, timeout=5,
+            )
+            procs = [p.strip() for p in r.stdout.strip().split(",") if p.strip()][:15]
+        else:
+            r = subprocess.run(
+                ["bash", "-c", "ps -e -o comm= | sort -u | head -20"],
+                capture_output=True, text=True, timeout=5,
+            )
+            procs = [l.strip() for l in r.stdout.strip().splitlines() if l.strip()][:15]
+        if procs:
+            lines.append(f"Open apps: {', '.join(procs)}")
+    except Exception:
+        pass
+
+    # ── Active window ──
+    try:
+        if os_name == "Windows":
+            r = subprocess.run(
+                ["powershell", "-Command",
+                 "Add-Type -AssemblyName System.Windows.Forms; "
+                 "[System.Windows.Forms.Screen]::PrimaryScreen | Out-Null; "
+                 "Add-Type @'\nusing System; using System.Runtime.InteropServices;\n"
+                 "public class WinAPI { [DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow();\n"
+                 "[DllImport(\"user32.dll\")] public static extern int GetWindowText(IntPtr hwnd, System.Text.StringBuilder sb, int maxCount); }\n'@;\n"
+                 "$hwnd=[WinAPI]::GetForegroundWindow(); $sb=New-Object System.Text.StringBuilder 256; "
+                 "[WinAPI]::GetWindowText($hwnd,$sb,256); $sb.ToString()"],
+                capture_output=True, text=True, timeout=5,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            title = r.stdout.strip()
+            if title:
+                lines.append(f"Active window: {title}")
+        elif os_name == "Darwin":
+            r = subprocess.run(
+                ["osascript", "-e",
+                 'tell application "System Events" to get name of first process whose frontmost is true'],
+                capture_output=True, text=True, timeout=5,
+            )
+            if r.stdout.strip():
+                lines.append(f"Active app: {r.stdout.strip()}")
+    except Exception:
+        pass
+
+    # ── RAM & CPU ──
+    try:
+        import psutil
+        mem = psutil.virtual_memory()
+        cpu = psutil.cpu_percent(interval=0.2)
+        lines.append(f"RAM: {mem.percent:.0f}% used ({mem.used//1024//1024} MB / {mem.total//1024//1024} MB)")
+        lines.append(f"CPU: {cpu:.0f}%")
+    except ImportError:
+        try:
+            if os_name == "Windows":
+                r = subprocess.run(
+                    ["powershell", "-Command",
+                     "Get-CimInstance Win32_OperatingSystem | Select-Object -ExpandProperty FreePhysicalMemory"],
+                    capture_output=True, text=True, timeout=5,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+                free_kb = int(r.stdout.strip() or 0)
+                lines.append(f"Free RAM: ~{free_kb//1024} MB")
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    # ── Clipboard ──
+    try:
+        clip = ""
+        if os_name == "Windows":
+            r = subprocess.run(
+                ["powershell", "-Command", "Get-Clipboard"],
+                capture_output=True, text=True, timeout=3,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            clip = r.stdout.strip()
+        elif os_name == "Darwin":
+            r = subprocess.run(["pbpaste"], capture_output=True, text=True, timeout=3)
+            clip = r.stdout.strip()
+        else:
+            try:
+                import pyperclip
+                clip = pyperclip.paste() or ""
+            except Exception:
+                r = subprocess.run(["xclip", "-selection", "clipboard", "-o"],
+                                   capture_output=True, text=True, timeout=3)
+                clip = r.stdout.strip()
+        if clip:
+            lines.append(f"Clipboard: {clip[:200]}")
+    except Exception:
+        pass
+
+    # ── Recent files ──
+    try:
+        recent: list[str] = []
+        if os_name == "Windows":
+            r = subprocess.run(
+                ["powershell", "-Command",
+                 "Get-Item '$env:APPDATA\\Microsoft\\Windows\\Recent\\*.lnk' | "
+                 "Sort-Object LastWriteTime -Descending | Select-Object -First 8 | "
+                 "ForEach-Object { $_.BaseName }"],
+                capture_output=True, text=True, timeout=5,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            recent = [l.strip() for l in r.stdout.strip().splitlines() if l.strip()][:8]
+        elif os_name == "Darwin":
+            r = subprocess.run(
+                ["bash", "-c", "ls -lt ~/Desktop ~/Documents 2>/dev/null | grep -v '^total' | head -8 | awk '{print $NF}'"],
+                capture_output=True, text=True, timeout=5,
+            )
+            recent = [l.strip() for l in r.stdout.strip().splitlines() if l.strip()][:8]
+        if recent:
+            lines.append(f"Recent files: {', '.join(recent)}")
+    except Exception:
+        pass
+
+    return "\n".join(lines)
+
+
+# ── Agent screenshot endpoint ───────────────────────────────────────────────
+@app.get("/api/agent/screenshot")
+async def agent_screenshot_endpoint():
+    """Return current screen as base64 PNG."""
+    b64 = take_screenshot()
+    if b64 is None:
+        return JSONResponse({"ok": False, "message": "Cannot capture screen. pip install mss pillow"}, status_code=503)
+    return {"ok": True, "b64": b64}
+
+
+# ── Agent run endpoint (streaming NDJSON) ───────────────────────────────────
+AGENT_VISION_PROMPT = """You are Kyrox Agent — an AI that autonomously controls a computer.
+You see the screen and can click, type, open apps, navigate websites, send messages, run scripts.
+
+Emit ONE JSON step per line. No markdown, no explanation, just JSON.
+
+Step types:
+{"type":"observe","message":"What I see: ..."}
+{"type":"plan","message":"My plan: ..."}
+{"type":"open","target":"URL_OR_APP","message":"Opening ..."}
+{"type":"navigate","target":"URL","message":"Going to ..."}
+{"type":"click","x":0.5,"y":0.3,"message":"Clicking on ..."}
+{"type":"type","text":"text to type","message":"Typing ..."}
+{"type":"key","key":"enter","message":"Pressing Enter"}
+{"type":"scroll","direction":"down","amount":3,"message":"Scrolling"}
+{"type":"wait","seconds":2,"message":"Waiting ..."}
+{"type":"search","query":"...","message":"Searching ..."}
+{"type":"send_message","app":"whatsapp","recipient":"NAME","message":"..."}
+{"type":"run_script","lang":"python","code":"...","message":"Running ..."}
+{"type":"write_file","path":"~/file.txt","content":"...","message":"Writing ..."}
+{"type":"web_fetch","url":"...","message":"Fetching ..."}
+{"type":"done","message":"Completed: what was done"}
+{"type":"error","message":"Why it failed"}
+
+Rules:
+- Start with "observe" + "plan" ALWAYS.
+- x/y are 0.0-1.0 normalized screen coords (0,0 = top-left).
+- For messaging: open app → wait → find contact → click message box → type → press enter.
+- End every task with "done" or "error".
+- Output ONLY JSON lines. Nothing else.
+"""
+
+from fastapi.responses import StreamingResponse as _StreamingResponse
+
+@app.post("/api/agent/run")
+async def agent_run_endpoint(req: Request):
+    """
+    Stream agent steps as NDJSON while executing the task.
+    Body: { "task": "...", "screen": "base64|null" }
+    """
+    body     = await req.json()
+    task     = body.get("task", "").strip()
+    screen   = body.get("screen")
+    settings = load_settings()
+    api_key  = settings.get("openrouter_key", "").strip()
+
+    if not task:
+        return JSONResponse({"ok": False, "message": "No task"}, status_code=400)
+
+    async def stream():
+        import json as _j
+
+        if not api_key:
+            yield _j.dumps({"type": "error", "message": "No OpenRouter API key. Set it in Settings."}) + "\n"
+            return
+
+        # Build messages
+        if screen:
+            msgs = [{
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{screen}"}},
+                    {"type": "text", "text": f"Current screen shown above.\n\nTask: {task}\n\nBegin your steps now."}
+                ]
+            }]
+            model = "google/gemini-2.0-flash-001"
+        else:
+            msgs = [{"role": "user", "content": f"No screen available. Task: {task}\nBegin your steps."}]
+            model = "deepseek/deepseek-v3:free"
+
+        pending = ""
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                async with client.stream(
+                    "POST", OPENROUTER_URL,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": "https://kyrox.nemea.uk",
+                        "X-Title": "Kyrox Agent",
+                    },
+                    json={
+                        "model": model,
+                        "messages": [{"role": "system", "content": AGENT_VISION_PROMPT}] + msgs,
+                        "stream": True,
+                        "max_tokens": 2048,
+                    }
+                ) as resp:
+                    if resp.status_code != 200:
+                        # Try fallback model
+                        yield _j.dumps({"type": "error", "message": f"Model unavailable (HTTP {resp.status_code})"}) + "\n"
+                        return
+
+                    async for line in resp.aiter_lines():
+                        if not line or not line.startswith("data:"): continue
+                        raw = line[5:].strip()
+                        if raw == "[DONE]": break
+                        try:
+                            chunk = _j.loads(raw)
+                        except Exception:
+                            continue
+                        token = (chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")) or ""
+                        if not token: continue
+                        pending += token
+
+                        while "\n" in pending:
+                            part, pending = pending.split("\n", 1)
+                            part = part.strip()
+                            if not part: continue
+                            try:
+                                step = _j.loads(part)
+                            except Exception:
+                                continue
+
+                            # generate_image: execute first so we can attach the b64 to the step
+                            if step.get("type") == "generate_image":
+                                img_res = execute_pc_action(step, settings)
+                                if img_res.get("ok") and img_res.get("b64"):
+                                    step["b64"] = img_res["b64"]
+                                else:
+                                    step["type"] = "error"
+                                    step["message"] = img_res.get("message", "Image generation failed")
+                                yield _j.dumps(step) + "\n"
+                                continue
+
+                            # Yield step to frontend
+                            yield _j.dumps(step) + "\n"
+                            # Execute on PC
+                            execute_agent_step(step, settings)
+                            # Screen refresh after interactions
+                            if step.get("type") in ("click","type","key","navigate","open","type_text","wait"):
+                                import asyncio as _aio
+                                await _aio.sleep(1.3)
+                                b64 = take_screenshot()
+                                if b64:
+                                    yield _j.dumps({"type": "screenshot", "b64": b64, "message": "Screen updated"}) + "\n"
+                            if step.get("type") in ("done", "error"):
+                                return
+
+        except Exception as e:
+            yield _j.dumps({"type": "error", "message": f"Agent error: {str(e)}"}) + "\n"
+
+    return _StreamingResponse(stream(), media_type="application/x-ndjson",
+                              headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"})
+
+
+def execute_agent_step(step: dict, settings: dict) -> dict:
+    """Execute a single agent JSON step on the local PC."""
+    t = step.get("type", "")
+    if t in ("observe", "plan", "done", "error", "screenshot"):
+        return {"ok": True}
+    if t == "wait":
+        import time as _t
+        _t.sleep(min(float(step.get("seconds", 1)), 10))
+        return {"ok": True}
+    if t in ("open", "navigate"):
+        return execute_pc_action({"type": "open", "target": step.get("target","")}, settings)
+    if t == "search":
+        return execute_pc_action({"type": "search", "query": step.get("query","")}, settings)
+    if t in ("send_message","run_script","write_file","web_fetch","web_browse","notify","clipboard","generate_image"):
+        return execute_pc_action(step, settings)
+    if t in ("click", "type", "key", "scroll", "type_text", "hotkey", "click_pos"):
+        try:
+            import pyautogui, time as _t
+            if t == "click":
+                sw, sh = pyautogui.size()
+                px = int(float(step.get("x", 0.5)) * sw)
+                py = int(float(step.get("y", 0.5)) * sh)
+                pyautogui.click(px, py)
+            elif t in ("type", "type_text"):
+                pyautogui.typewrite(step.get("text",""), interval=0.04)
+            elif t == "key":
+                pyautogui.press(step.get("key","enter"))
+            elif t == "hotkey":
+                pyautogui.hotkey(*step.get("keys",[]))
+            elif t == "click_pos":
+                pyautogui.click(step.get("x",0), step.get("y",0))
+            elif t == "scroll":
+                d = step.get("direction","down")
+                amt = int(step.get("amount", 3))
+                pyautogui.scroll(-amt if d=="down" else amt)
+            return {"ok": True}
+        except ImportError:
+            return {"ok": False, "message": "pip install pyautogui"}
+        except Exception as e:
+            return {"ok": False, "message": str(e)}
+    return {"ok": False, "message": f"Unknown step: {t}"}
+
 
 # ── WebSocket chat ─────────────────────────────────────────────────────────
 @app.websocket("/ws/chat/{uid}")
@@ -1172,6 +2088,24 @@ async def chat_ws(ws: WebSocket, uid: str):
                 await ws.send_text(json.dumps({"type": "learned"}))
                 continue
 
+            # ── Agent mode — Kyrox agit de façon autonome ─────────────────
+            if action == "agent":
+                goal = payload.get("goal", payload.get("message", "")).strip()
+                if not goal:
+                    continue
+                settings = load_settings()
+                api_key = settings.get("openrouter_key", "").strip()
+                if not api_key:
+                    await ws.send_text(json.dumps({"type": "error", "content": "no_api_key"}))
+                    continue
+                await ws.send_text(json.dumps({"type": "agent_start", "goal": goal}))
+                result = await run_agent_loop(goal, api_key, settings, ws=ws, uid=uid)
+                history.append({"role": "user", "content": f"[TÂCHE AGENT]: {goal}"})
+                history.append({"role": "assistant", "content": f"[AGENT TERMINÉ]: {result}"})
+                save_history(uid, history)
+                await ws.send_text(json.dumps({"type": "done", "content": result}))
+                continue
+
             user_msg = payload.get("message", "").strip()
             if not user_msg:
                 continue
@@ -1191,6 +2125,14 @@ async def chat_ws(ws: WebSocket, uid: str):
             mem_ctx    = memory_summary(memory)
             ctx_text   = settings.get("context_text", "")
             sys_prompt = settings["system_prompt"]
+
+            # ── Real-time PC context — injected every message ──────────────
+            try:
+                pc_ctx = get_realtime_pc_context()
+                if pc_ctx:
+                    sys_prompt = pc_ctx + "\n\n" + sys_prompt
+            except Exception:
+                pass
 
             if profile_text:
                 sys_prompt = f"[USER PROFILE — files detected on their PC]:\n{profile_text}\n\n" + sys_prompt
@@ -1366,3 +2308,189 @@ async def startup_info():
         auto_cmd = "systemctl --user enable kyrox && systemctl --user start kyrox"
 
     return {"os": os_name, "instructions": instructions, "auto_cmd": auto_cmd, "script": script_path}
+
+
+# ── Autostart on boot ────────────────────────────────────────────────────────
+def _autostart_paths():
+    """Return the OS-specific path(s) used to register/unregister Kyrox autostart."""
+    os_name = platform.system()
+    script_path = Path(__file__).resolve()
+    project_dir = script_path.parent
+
+    if os_name == "Windows":
+        startup_folder = Path.home() / "AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup"
+        return {"os": os_name, "bat": startup_folder / "kyrox_autostart.bat"}
+    elif os_name == "Darwin":
+        plist_dir = Path.home() / "Library/LaunchAgents"
+        return {"os": os_name, "plist": plist_dir / "uk.nemea.kyrox.plist"}
+    else:
+        autostart_dir = Path.home() / ".config/autostart"
+        return {"os": os_name, "desktop": autostart_dir / "kyrox.desktop"}
+
+
+def install_autostart() -> dict:
+    """Write the OS-specific autostart file so Kyrox launches on login/boot."""
+    try:
+        script_path = Path(__file__).resolve()
+        project_dir = script_path.parent
+        paths = _autostart_paths()
+        os_name = paths["os"]
+
+        if os_name == "Windows":
+            bat_path = paths["bat"]
+            bat_path.parent.mkdir(parents=True, exist_ok=True)
+            bat_content = (
+                f'@echo off\n'
+                f'cd /d "{project_dir}"\n'
+                f'start "" /B python -m uvicorn main:app --host 127.0.0.1 --port 8000\n'
+                f'timeout /t 2 >nul\n'
+                f'start "" "http://127.0.0.1:8000"\n'
+            )
+            bat_path.write_text(bat_content, encoding="utf-8")
+            return {"ok": True, "message": f"Autostart enabled ({bat_path})"}
+
+        elif os_name == "Darwin":
+            plist_path = paths["plist"]
+            plist_path.parent.mkdir(parents=True, exist_ok=True)
+            plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>uk.nemea.kyrox</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/env</string>
+    <string>python3</string>
+    <string>-m</string>
+    <string>uvicorn</string>
+    <string>main:app</string>
+    <string>--host</string>
+    <string>127.0.0.1</string>
+    <string>--port</string>
+    <string>8000</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>{project_dir}</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/tmp/kyrox.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/kyrox.err.log</string>
+</dict>
+</plist>"""
+            plist_path.write_text(plist_content, encoding="utf-8")
+            try:
+                subprocess.run(["launchctl", "unload", str(plist_path)], capture_output=True, timeout=5)
+            except Exception:
+                pass
+            subprocess.run(["launchctl", "load", str(plist_path)], capture_output=True, timeout=5)
+            return {"ok": True, "message": f"Autostart enabled ({plist_path})"}
+
+        else:
+            desktop_path = paths["desktop"]
+            desktop_path.parent.mkdir(parents=True, exist_ok=True)
+            desktop_content = f"""[Desktop Entry]
+Type=Application
+Name=Kyrox
+Exec=python3 -m uvicorn main:app --host 127.0.0.1 --port 8000 --app-dir "{project_dir}"
+Hidden=false
+X-GNOME-Autostart-enabled=true
+Comment=Kyrox AI assistant autostart
+"""
+            desktop_path.write_text(desktop_content, encoding="utf-8")
+            return {"ok": True, "message": f"Autostart enabled ({desktop_path})"}
+
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
+
+
+def uninstall_autostart() -> dict:
+    """Remove the OS-specific autostart file so Kyrox stops launching on login/boot."""
+    try:
+        paths = _autostart_paths()
+        os_name = paths["os"]
+
+        if os_name == "Windows":
+            bat_path = paths["bat"]
+            if bat_path.exists():
+                bat_path.unlink()
+            return {"ok": True, "message": "Autostart disabled"}
+
+        elif os_name == "Darwin":
+            plist_path = paths["plist"]
+            if plist_path.exists():
+                try:
+                    subprocess.run(["launchctl", "unload", str(plist_path)], capture_output=True, timeout=5)
+                except Exception:
+                    pass
+                plist_path.unlink()
+            return {"ok": True, "message": "Autostart disabled"}
+
+        else:
+            desktop_path = paths["desktop"]
+            if desktop_path.exists():
+                desktop_path.unlink()
+            return {"ok": True, "message": "Autostart disabled"}
+
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
+
+
+@app.get("/api/autostart/status")
+async def autostart_status():
+    """
+    Returns whether the user has already been asked about autostart,
+    and whether it's currently enabled (checked both from settings and on-disk).
+    """
+    s = load_settings()
+    paths = _autostart_paths()
+    os_name = paths["os"]
+
+    on_disk = False
+    if os_name == "Windows":
+        on_disk = paths["bat"].exists()
+    elif os_name == "Darwin":
+        on_disk = paths["plist"].exists()
+    else:
+        on_disk = paths["desktop"].exists()
+
+    return {
+        "asked": s.get("autostart_asked", False),
+        "enabled": s.get("autostart_enabled", False) and on_disk,
+        "os": os_name,
+    }
+
+
+@app.post("/api/autostart/enable")
+async def autostart_enable():
+    s = load_settings()
+    result = install_autostart()
+    s["autostart_asked"] = True
+    s["autostart_enabled"] = bool(result.get("ok"))
+    save_settings(s)
+    return result
+
+
+@app.post("/api/autostart/disable")
+async def autostart_disable():
+    s = load_settings()
+    result = uninstall_autostart()
+    s["autostart_asked"] = True
+    s["autostart_enabled"] = False
+    save_settings(s)
+    return result
+
+
+@app.post("/api/autostart/dismiss")
+async def autostart_dismiss():
+    """User closed the prompt without choosing — mark as asked but leave autostart off."""
+    s = load_settings()
+    s["autostart_asked"] = True
+    save_settings(s)
+    return {"ok": True}
+
+
