@@ -259,15 +259,234 @@ header{grid-area:header;display:flex;align-items:center;justify-content:space-be
 .nu-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:28px;width:100%;max-width:340px;display:flex;flex-direction:column;gap:16px}
 .nu-card h3{font-family:var(--display);font-size:15px;font-weight:800;letter-spacing:4px;color:var(--accent);text-transform:uppercase}
 
-@media(max-width:600px){
+/* ── Autostart prompt modal ── */
+#autostart-modal{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:24px;opacity:0;pointer-events:none;transition:opacity .25s}
+#autostart-modal.open{opacity:1;pointer-events:all}
+.as-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:30px 28px;width:100%;max-width:380px;display:flex;flex-direction:column;gap:14px;transform:translateY(10px);transition:transform .25s}
+#autostart-modal.open .as-card{transform:translateY(0)}
+.as-icon{width:46px;height:46px;border-radius:12px;background:var(--accent-dim);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--accent)}
+.as-card h3{font-family:var(--display);font-size:15px;font-weight:800;letter-spacing:3px;color:var(--text);text-transform:uppercase;line-height:1.4}
+.as-card p{font-size:13px;color:var(--text2);line-height:1.6}
+.as-actions{display:flex;gap:10px;margin-top:6px}
+.as-btn{flex:1;padding:11px;border-radius:var(--r2);font-family:var(--display);font-size:11px;font-weight:800;letter-spacing:2px;cursor:pointer;text-transform:uppercase;transition:opacity .15s,background .15s}
+.as-btn-yes{background:var(--accent);color:var(--bg);border:none}
+.as-btn-yes:hover{opacity:.88}
+.as-btn-no{background:transparent;color:var(--text2);border:1px solid var(--border2)}
+.as-btn-no:hover{border-color:var(--border);color:var(--text)}
+.as-status{font-family:var(--mono);font-size:9px;letter-spacing:1px;color:var(--text3);text-align:center}
+
+.header-left{display:flex;align-items:center;gap:10px}
+.btn-icon#btn-menu-toggle{display:none}
+
+@media(max-width:760px){
   #app{grid-template-columns:0 1fr;grid-template-areas:"header header" "sidebar main"}
+  header{padding:0 12px}
+  .logo{font-size:15px;letter-spacing:4px}
+  .btn-icon#btn-menu-toggle{display:flex}
+  .header-center{display:none}
+  .header-right{gap:4px}
+  .btn-agent-hdr{padding:0 9px;font-size:8px;gap:4px}
+  .btn-agent-hdr span:not(.agent-hdr-dot){display:none}
+  .btn-icon{width:30px;height:30px}
+
+  /* Sidebar becomes a full overlay drawer */
   #sidebar{display:none}
-  #sidebar.mobile-open{display:flex;position:fixed;inset:0;z-index:100;width:80vw;max-width:260px}
-  #empty h2{font-size:24px}
+  #sidebar.mobile-open{display:flex;position:fixed;inset:0 22% 0 0;z-index:400;width:auto;max-width:300px;box-shadow:8px 0 32px rgba(0,0,0,.5)}
+  #sidebar-backdrop{display:none;position:fixed;inset:0;z-index:390;background:rgba(0,0,0,.55);backdrop-filter:blur(2px)}
+  #sidebar-backdrop.open{display:block}
+
+  #empty h2{font-size:22px}
+  #empty p{font-size:13px}
+  .chips{flex-wrap:wrap;justify-content:center}
+  .chip{font-size:11px;padding:6px 12px}
+
+  #mode-tabs{padding:8px 10px 0;gap:0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tab{padding:6px 12px;font-size:9px;white-space:nowrap;flex-shrink:0}
+
+  #chat-area{padding:14px 12px}
+  .bubble{font-size:13.5px;padding:9px 12px}
+  #input-bar{padding:8px 10px 12px}
+
+  /* Voice / orb view */
+  #voice-view{gap:20px;padding:16px}
+  .orb-wrap{width:150px;height:150px}
+  .orb-label{font-size:13px}
+  .orb-sub{font-size:8px}
+
+  /* Agent panel becomes full-screen on mobile */
+  #agent-panel{width:100vw;max-width:100vw;right:-100vw}
+  #agent-panel.open{right:0}
+  .agent-screen-box{height:130px}
+  #agent-canvas{height:130px}
+
+  /* Settings sheet — already bottom-sheet by design, just tighten padding */
+  .settings-sheet{max-height:92dvh}
+  .sheet-body{padding:16px 16px 28px;gap:14px}
+
+  /* News/brief lists are already flex-column, stack naturally */
+
+  /* Kyrox generated images shrink to fit */
+  .kx-generated-image{max-width:100%}
+  .agent-step-img{max-width:160px}
+
+  /* Modals */
+  .nu-card{padding:20px;max-width:92vw}
+}
+
+@media(max-width:420px){
+  .logo{font-size:13px;letter-spacing:3px}
+  .orb-wrap{width:130px;height:130px}
+  #voice-view{gap:16px}
 }
 
 /* ── Overlay widget ── */
 #overlay-widget{display:none;position:fixed;z-index:9000;min-width:280px;max-width:380px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);font-family:'Space Grotesk',sans-serif;overflow:hidden;resize:both;top:80px;right:20px}
+
+/* ── Morning Brief (style Jarvis/Friday) ── */
+#morning-brief-panel{position:fixed;inset:0;z-index:150;background:rgba(0,0,0,.92);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity .4s}
+#morning-brief-panel.open{opacity:1;pointer-events:all}
+.brief-card{background:var(--bg2);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:28px 24px;max-width:520px;width:100%;display:flex;flex-direction:column;gap:0;position:relative;max-height:88dvh;overflow-y:auto}
+.brief-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.brief-title{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--text2)}
+.brief-sun{font-size:14px}
+.brief-close{background:none;border:1px solid var(--border2);border-radius:8px;color:var(--text3);cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:13px;transition:all .15s}
+.brief-close:hover{border-color:var(--border);color:var(--text)}
+.brief-total{font-family:var(--mono);font-size:10px;color:#a78bfa;letter-spacing:1px;margin-bottom:4px;text-align:right}
+.brief-items{display:flex;flex-direction:column;gap:8px}
+.brief-item{display:flex;align-items:flex-start;gap:12px;padding:13px 14px;border-radius:12px;background:var(--bg3);border:1px solid var(--border2);cursor:pointer;transition:border-color .2s;position:relative;overflow:hidden}
+.brief-item:hover{border-color:rgba(255,255,255,0.15)}
+.brief-item.alert{border-color:rgba(239,68,68,0.4);background:rgba(239,68,68,0.05)}
+.brief-item.success{border-color:rgba(0,204,106,0.3)}
+.brief-item-icon{font-size:22px;flex-shrink:0;margin-top:1px}
+.brief-item-body{flex:1;min-width:0}
+.brief-item-name{font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px}
+.brief-item-sub{font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.4}
+.brief-item-sub.ok{color:#00cc6a}
+.brief-item-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.brief-tag{padding:2px 10px;border-radius:20px;font-family:var(--mono);font-size:10px;background:rgba(255,255,255,0.06);border:1px solid var(--border2);color:var(--text3)}
+.brief-tag.purple{background:rgba(139,92,246,0.12);border-color:rgba(139,92,246,0.25);color:#a78bfa}
+.brief-tag.green{background:rgba(0,204,106,0.1);border-color:rgba(0,204,106,0.2);color:#00cc6a}
+.brief-tag.orange{background:rgba(255,149,0,0.1);border-color:rgba(255,149,0,0.2);color:#ff9500}
+.brief-tag.red{background:rgba(255,64,64,0.1);border-color:rgba(255,64,64,0.2);color:#ff4040}
+.brief-kpi{font-family:var(--mono);font-size:10px;font-weight:700;color:#00cc6a;letter-spacing:.5px;text-align:right;flex-shrink:0;white-space:nowrap;margin-top:1px}
+.brief-kpi.red{color:#ff4040}
+.brief-kpi.orange{color:#ff9500}
+.brief-kpi.purple{color:#a78bfa}
+.brief-all-good{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;background:rgba(0,204,106,0.08);border:1px solid rgba(0,204,106,0.2)}
+.brief-all-good-icon{width:22px;height:22px;border-radius:50%;background:#00cc6a;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+.brief-all-good-text{font-size:12px;font-weight:600;color:#00cc6a}
+.brief-all-good-sub{font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:1px}
+.brief-pagination{display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:4px;font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:2px}
+.brief-btn-trigger{display:flex;align-items:center;gap:6px;padding:5px 14px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.25);border-radius:20px;font-family:var(--mono);font-size:9px;color:#a78bfa;cursor:pointer;transition:all .2s;letter-spacing:1px;text-transform:uppercase}
+.brief-btn-trigger:hover{background:rgba(139,92,246,0.2)}
+.brief-btn-trigger .dot{background:#a78bfa;animation:blink-dot .9s ease infinite}
+
+/* Chat morning brief inline card */
+.morning-recap-card{align-self:center;background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px;animation:pop-in .3s ease;max-width:500px;width:100%;margin:6px 0}
+.mrc-header{display:flex;align-items:center;justify-content:space-between}
+.mrc-title{font-family:var(--mono);font-size:9px;letter-spacing:3px;color:#a78bfa;text-transform:uppercase;display:flex;align-items:center;gap:6px}
+.mrc-total{font-family:var(--mono);font-size:10px;color:#a78bfa}
+.mrc-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:10px;background:var(--bg3);border:1px solid var(--border2)}
+.mrc-item.alert{border-color:rgba(239,68,68,0.35)}
+.mrc-item.ok{border-color:rgba(0,204,106,0.25)}
+.mrc-item-icon{font-size:18px;flex-shrink:0}
+.mrc-item-body{flex:1}
+.mrc-item-name{font-size:12px;font-weight:600;color:var(--text);margin-bottom:2px}
+.mrc-item-detail{font-family:var(--mono);font-size:10px;color:var(--text2)}
+.mrc-item-detail.ok{color:#00cc6a}
+.mrc-item-detail.alert{color:#ff4040}
+.mrc-tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
+.mrc-tag{padding:1px 8px;border-radius:20px;font-family:var(--mono);font-size:9px}
+.mrc-tag.g{background:rgba(0,204,106,0.1);border:1px solid rgba(0,204,106,0.2);color:#00cc6a}
+.mrc-tag.p{background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.2);color:#a78bfa}
+.mrc-tag.o{background:rgba(255,149,0,0.1);border:1px solid rgba(255,149,0,0.2);color:#ff9500}
+.mrc-tag.r{background:rgba(255,64,64,0.1);border:1px solid rgba(255,64,64,0.2);color:#ff4040}
+.mrc-all-ok{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:10px;background:rgba(0,204,106,0.07);border:1px solid rgba(0,204,106,0.18)}
+.mrc-ok-dot{width:18px;height:18px;border-radius:50%;background:#00cc6a;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0}
+
+/* ── Generated image card ── */
+.kx-image-wrap{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.kx-generated-image{width:100%;max-width:340px;border-radius:var(--r2);border:1px solid var(--border2);display:block;cursor:zoom-in;background:#000}
+.kx-image-actions{display:flex;gap:6px}
+.kx-img-btn{padding:5px 11px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text2);font-family:var(--mono);font-size:9px;letter-spacing:1px;cursor:pointer;transition:all .15s}
+.kx-img-btn:hover{color:var(--text);border-color:var(--border);background:var(--accent-dim)}
+
+/* ── Agent Mode button in header ── */
+.btn-agent-hdr{display:flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid rgba(0,255,159,0.2);border-radius:8px;background:transparent;color:rgba(0,255,159,0.5);cursor:pointer;font-family:var(--mono);font-size:9px;letter-spacing:2px;text-transform:uppercase;transition:all .2s;white-space:nowrap}
+.btn-agent-hdr:hover{border-color:rgba(0,255,159,0.5);color:#00ff9f}
+.btn-agent-hdr.active{border-color:#00ff9f;color:#00ff9f;background:rgba(0,255,159,0.06)}
+.agent-hdr-dot{width:5px;height:5px;border-radius:50%;background:rgba(0,255,159,0.4);flex-shrink:0;transition:background .2s}
+.btn-agent-hdr.active .agent-hdr-dot{background:#00ff9f;animation:agent-pulse 1.2s ease infinite}
+@keyframes agent-pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(0,255,159,.4)}50%{opacity:.8;box-shadow:0 0 0 5px transparent}}
+
+/* ── Agent Panel (slide-in from right) ── */
+#agent-backdrop{display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.5);backdrop-filter:blur(3px)}
+#agent-backdrop.open{display:block}
+#agent-panel{position:fixed;top:0;right:-520px;width:460px;max-width:96vw;height:100dvh;z-index:310;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;transition:right .32s cubic-bezier(.4,0,.2,1)}
+#agent-panel.open{right:0}
+.agent-panel-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 12px;border-bottom:1px solid var(--border2);flex-shrink:0}
+.agent-panel-title-row{display:flex;align-items:center;gap:10px}
+.agent-panel-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);transition:all .3s;flex-shrink:0}
+.agent-panel-dot.watching{background:#00ff9f;box-shadow:0 0 8px rgba(0,255,159,.5);animation:agent-pulse 1.5s ease infinite}
+.agent-panel-dot.thinking{background:var(--orange);animation:agent-pulse 0.7s ease infinite}
+.agent-title{font-family:var(--display);font-size:14px;font-weight:800;letter-spacing:4px;color:var(--accent);text-transform:uppercase}
+.agent-status-txt{font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:2px;text-transform:uppercase}
+.agent-close-btn{background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:4px 8px;border-radius:6px;transition:all .15s}
+.agent-close-btn:hover{color:var(--text);background:var(--accent-dim)}
+
+/* screen preview */
+.agent-screen-box{position:relative;flex-shrink:0;height:160px;background:#000;border-bottom:1px solid var(--border2);overflow:hidden}
+#agent-canvas{width:100%;height:160px;object-fit:contain;display:block;opacity:.88}
+.agent-screen-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;color:var(--text3);font-family:var(--mono);font-size:9px;letter-spacing:1.5px;text-align:center;pointer-events:none}
+.agent-screen-empty.hidden{display:none}
+.agent-screen-empty-icon{font-size:20px;opacity:.3}
+.agent-cursor-dot{position:absolute;width:12px;height:12px;border:2px solid #00ff9f;border-radius:50%;pointer-events:none;transform:translate(-50%,-50%);box-shadow:0 0 8px rgba(0,255,159,.6);display:none;transition:left .15s,top .15s}
+
+/* step feed */
+.agent-feed{flex:1;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:5px;scroll-behavior:smooth}
+.agent-feed-empty{font-family:var(--mono);font-size:10px;color:var(--text3);text-align:center;padding:24px 0;letter-spacing:1px}
+.agent-step{display:flex;align-items:flex-start;gap:9px;padding:7px 10px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);animation:pop-in .18s ease;font-size:12px}
+.agent-step-icon{font-size:13px;flex-shrink:0;margin-top:1px}
+.agent-step-body{flex:1;min-width:0}
+.agent-step-type{font-family:var(--mono);font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:2px}
+.agent-step-desc{color:var(--text2);line-height:1.45;word-break:break-word;font-size:11px}
+.agent-step.ok .agent-step-type{color:#00ff9f}
+.agent-step.err .agent-step-type{color:var(--danger)}
+.agent-step.thinking{border-color:rgba(255,149,0,.2);background:rgba(255,149,0,.04)}
+.agent-step.thinking .agent-step-type{color:var(--orange)}
+.agent-step-img{margin-top:6px;width:100%;max-width:220px;border-radius:8px;border:1px solid var(--border2);display:block;cursor:zoom-in}
+.agent-typing::after{content:'…';animation:blink-dot .9s steps(3,end) infinite}
+
+/* input row */
+.agent-input-area{padding:10px 14px;border-top:1px solid var(--border2);flex-shrink:0}
+.agent-input-row{display:flex;gap:8px;align-items:flex-end}
+#agent-task-input{flex:1;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r2);padding:9px 12px;color:var(--text);font-family:var(--font);font-size:13px;resize:none;outline:none;line-height:1.5;transition:border-color .15s;max-height:80px}
+#agent-task-input:focus{border-color:rgba(0,255,159,.3)}
+#agent-task-input::placeholder{color:var(--text3)}
+.agent-run-btn{width:38px;height:38px;flex-shrink:0;border:1px solid rgba(0,255,159,.3);border-radius:10px;background:rgba(0,255,159,.05);color:#00ff9f;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.agent-run-btn:hover{background:rgba(0,255,159,.12);border-color:rgba(0,255,159,.6)}
+.agent-run-btn:disabled{opacity:.3;cursor:not-allowed}
+.agent-footer-strip{display:flex;align-items:center;justify-content:space-between;padding:6px 2px 0}
+.agent-footer-note{font-family:var(--mono);font-size:8px;color:var(--text3);letter-spacing:.5px;line-height:1.4}
+.agent-watch-toggle{display:flex;align-items:center;gap:5px;cursor:pointer}
+.agent-watch-toggle input{accent-color:#00ff9f;width:12px;height:12px}
+.agent-watch-label{font-family:var(--mono);font-size:8px;color:var(--text2);letter-spacing:1px}
+
+/* ── Orb write mode ── */
+.orb-input-wrap{display:none;flex-direction:column;align-items:center;gap:8px;width:100%;max-width:380px}
+.orb-input-wrap.active{display:flex}
+#orb-type-input{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;color:var(--text);font-family:var(--font);font-size:14px;outline:none;resize:none;max-height:80px;transition:border-color .15s}
+#orb-type-input:focus{border-color:rgba(255,255,255,.25)}
+#orb-type-input::placeholder{color:var(--text3);text-align:center}
+.orb-input-row{display:flex;gap:8px;width:100%}
+.orb-send-btn{flex:1;padding:9px;background:var(--accent);color:var(--bg);border:none;border-radius:var(--r2);font-family:var(--display);font-size:11px;font-weight:800;letter-spacing:3px;cursor:pointer;transition:opacity .15s;text-transform:uppercase}
+.orb-send-btn:hover{opacity:.85}
+.orb-cancel-btn{padding:9px 14px;background:transparent;color:var(--text3);border:1px solid var(--border2);border-radius:var(--r2);font-family:var(--mono);font-size:10px;cursor:pointer;transition:all .15s;letter-spacing:1px}
+.orb-cancel-btn:hover{color:var(--text);border-color:var(--border)}
+.orb-mode-toggle{display:flex;gap:6px;margin-top:-8px}
+.orb-mode-btn{padding:4px 12px;background:transparent;border:1px solid var(--border2);border-radius:20px;font-family:var(--mono);font-size:8px;color:var(--text3);cursor:pointer;letter-spacing:1.5px;text-transform:uppercase;transition:all .15s}
+.orb-mode-btn.active{border-color:var(--border);color:var(--text);background:var(--accent-dim)}
+.orb-mode-btn:hover{color:var(--text2)}
 </style>
 </head>
 <body>
@@ -314,18 +533,80 @@ header{grid-area:header;display:flex;align-items:center;justify-content:space-be
   <span id="wk-text">Listening for "Hey Kyrox"…</span>
 </div>
 
+<!-- Autostart prompt -->
+<div id="autostart-modal">
+  <div class="as-card">
+    <div class="as-icon">⊙</div>
+    <h3>Launch Kyrox on startup?</h3>
+    <p>Do you want Kyrox to open every time you turn on your PC? It'll start automatically in the background after you log in.</p>
+    <div class="as-actions">
+      <button class="as-btn as-btn-no" id="as-btn-no">No</button>
+      <button class="as-btn as-btn-yes" id="as-btn-yes">Yes</button>
+    </div>
+    <div class="as-status" id="as-status"></div>
+  </div>
+</div>
+
 <div id="app">
   <header>
-    <div class="logo">KYROX</div>
+    <div class="header-left">
+      <button class="btn-icon" id="btn-menu-toggle" title="Menu">≡</button>
+      <div class="logo">KYROX</div>
+    </div>
     <div class="header-center">
       <div class="status-chip"><div class="dot" id="status-dot"></div><span id="status-label">CONNECTING</span></div>
       <span class="model-tag" id="model-tag">—</span>
     </div>
     <div class="header-right">
       <button class="btn-icon" id="btn-new-chat" title="New chat">✦</button>
+      <button class="btn-agent-hdr" id="btn-agent-hdr" title="Agent Mode — Kyrox acts on your PC">
+        <span class="agent-hdr-dot"></span>
+        AGENT
+      </button>
       <button class="btn-icon" id="btn-settings" title="Settings">⊙</button>
     </div>
   </header>
+  <div id="sidebar-backdrop"></div>
+
+  <!-- ── AGENT PANEL ── -->
+  <div id="agent-backdrop"></div>
+  <div id="agent-panel">
+    <div class="agent-panel-header">
+      <div class="agent-panel-title-row">
+        <div class="agent-panel-dot" id="agent-panel-dot"></div>
+        <span class="agent-title">AGENT</span>
+        <span class="agent-status-txt" id="agent-panel-status">STANDBY</span>
+      </div>
+      <button class="agent-close-btn" id="agent-panel-close">✕</button>
+    </div>
+
+    <div class="agent-screen-box">
+      <canvas id="agent-canvas"></canvas>
+      <div class="agent-screen-empty" id="agent-screen-empty">
+        <div class="agent-screen-empty-icon">⊙</div>
+        <span>Enable agent to see your screen</span>
+      </div>
+      <div class="agent-cursor-dot" id="agent-cursor-dot"></div>
+    </div>
+
+    <div class="agent-feed" id="agent-feed">
+      <div class="agent-feed-empty">Agent steps appear here as it works…</div>
+    </div>
+
+    <div class="agent-input-area">
+      <div class="agent-input-row">
+        <textarea id="agent-task-input" rows="2" placeholder="Give the agent a task… (e.g. Open WhatsApp and send me 'coucou')"></textarea>
+        <button class="agent-run-btn" id="agent-run-btn" title="Run task">▶</button>
+      </div>
+      <div class="agent-footer-strip">
+        <span class="agent-footer-note">Agent sees your screen and can click, type & navigate everywhere</span>
+        <label class="agent-watch-toggle">
+          <input type="checkbox" id="agent-always-watch" checked>
+          <span class="agent-watch-label">Live screen</span>
+        </label>
+      </div>
+    </div>
+  </div>
 
   <div id="sidebar">
     <div class="sidebar-section">
@@ -344,7 +625,7 @@ header{grid-area:header;display:flex;align-items:center;justify-content:space-be
     <div class="sidebar-section"><div class="sidebar-label">Memory</div></div>
     <div id="sidebar-memory"></div>
     <div style="padding:10px 14px 14px">
-      <button class="btn-new-user" id="btn-new-chat" style="margin-top:0">✦ New Chat</button>
+      <button class="btn-new-user" id="btn-new-chat-sidebar" style="margin-top:0">✦ New Chat</button>
     </div>
   </div>
 
@@ -353,6 +634,10 @@ header{grid-area:header;display:flex;align-items:center;justify-content:space-be
       <button class="tab active" data-tab="chat">· Chat</button>
       <button class="tab" data-tab="voice">◉ Voice</button>
       <button class="tab" data-tab="news">◈ News</button>
+      <button class="brief-btn-trigger" id="btn-morning-brief" title="Morning Brief">
+        <div class="dot on" style="width:5px;height:5px;border-radius:50%;flex-shrink:0"></div>
+        BRIEF
+      </button>
       <button class="btn-icon" id="btn-overlay" title="Screen overlay" style="margin-left:auto;margin-right:8px;margin-bottom:2px">⊡</button>
     </div>
 
@@ -365,11 +650,13 @@ header{grid-area:header;display:flex;align-items:center;justify-content:space-be
             <textarea id="user-input" rows="1" placeholder="Message Kyrox…" autocomplete="off" spellcheck="false"></textarea>
             <div class="input-btns">
               <button class="btn-mic" id="btn-mic" title="Voice input">○</button>
+              <button class="btn-icon" id="btn-agent-mode" title="Agent Mode — Kyrox acts alone" style="width:36px;height:36px;border-radius:10px;font-size:13px;border-color:rgba(139,92,246,0.3);color:#a78bfa" onclick="toggleAgentMode()">⚡</button>
               <button class="btn-send" id="btn-send" title="Send">↑</button>
             </div>
           </div>
           <div class="input-meta">
             <span id="model-current">—</span>
+            <span id="agent-mode-label" style="font-family:var(--mono);font-size:9px;color:#a78bfa;display:none;letter-spacing:1px">⚡ MODE AGENT ON</span>
             <span id="voice-status"></span>
           </div>
         </div>
@@ -390,16 +677,32 @@ header{grid-area:header;display:flex;align-items:center;justify-content:space-be
     <!-- Voice tab -->
     <div class="tab-content" id="tab-voice">
       <div id="voice-view">
-        <div class="orb-wrap" id="orb-wrap" onclick="handleOrbClick()" title="Click to speak">
+        <div class="orb-wrap" id="orb-wrap" onclick="handleOrbClick()" title="Click to speak or write">
           <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div>
           <div class="r1c"><div class="ring-dot"></div></div>
           <div class="r2c"><div class="ring-dot" style="background:var(--c);box-shadow:0 0 8px var(--c);top:auto;bottom:0;transform:translate(-50%,50%);transform-origin:center calc(50% + 96px)"></div></div>
           <div class="orb" id="orb">
             <div class="orb-label">KYROX</div>
-            <div class="orb-sub">TAP TO SPEAK</div>
+            <div class="orb-sub" id="orb-sub">TAP TO SPEAK</div>
             <div class="orb-listen-text">LISTENING…</div>
           </div>
         </div>
+
+        <!-- Mode toggle: voice / write -->
+        <div class="orb-mode-toggle">
+          <button class="orb-mode-btn active" id="orb-btn-voice" onclick="setOrbMode('voice')">○ Voice</button>
+          <button class="orb-mode-btn" id="orb-btn-write" onclick="setOrbMode('write')">✎ Write</button>
+        </div>
+
+        <!-- Text input that shows in write mode -->
+        <div class="orb-input-wrap" id="orb-input-wrap">
+          <textarea id="orb-type-input" rows="2" placeholder="Type your message…"></textarea>
+          <div class="orb-input-row">
+            <button class="orb-cancel-btn" onclick="setOrbMode('voice')">Cancel</button>
+            <button class="orb-send-btn" onclick="sendOrbText()">SEND</button>
+          </div>
+        </div>
+
         <div class="waveform" id="waveform">
           <div class="wb" style="height:4px"></div><div class="wb" style="height:9px"></div>
           <div class="wb" style="height:16px"></div><div class="wb" style="height:6px"></div>
@@ -411,6 +714,24 @@ header{grid-area:header;display:flex;align-items:center;justify-content:space-be
         <div id="voice-last"><span style="color:var(--text3)">Say "Hey Kyrox" or tap the orb…</span></div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- Morning Brief Panel -->
+<div id="morning-brief-panel">
+  <div class="brief-card">
+    <div class="brief-header">
+      <div class="brief-title">
+        <span class="brief-sun">🌤</span>
+        THIS MORNING
+      </div>
+      <button class="brief-close" onclick="closeBrief()">✕</button>
+    </div>
+    <div class="brief-total" id="brief-total">14 tasks processed</div>
+    <div class="brief-items" id="brief-items">
+      <!-- Items injected by JS -->
+    </div>
+    <div class="brief-pagination" id="brief-pagination"></div>
   </div>
 </div>
 
@@ -479,6 +800,13 @@ header{grid-area:header;display:flex;align-items:center;justify-content:space-be
         <button class="btn-primary" style="width:auto;padding:8px 14px;font-size:11px" onclick="addContextPath()">ADD</button>
       </div>
       <button class="btn-add-path" onclick="scanContextNow()">🔄 Re-scan context files</button>
+      <div class="sdiv"></div>
+      <div class="stitle">STARTUP</div>
+      <div class="sh" style="margin-bottom:8px">Launch Kyrox automatically when your PC turns on.</div>
+      <div class="stat-mini" style="cursor:pointer" onclick="toggleAutostartSetting()">
+        <span class="stat-mini-label">Launch on boot</span>
+        <span class="stat-mini-val" id="autostart-toggle-val">—</span>
+      </div>
       <div class="sdiv"></div>
       <div class="stitle">SOCIALS</div>
       <div class="sgrid">
@@ -550,6 +878,315 @@ const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const voiceOk = !!SR;
 let voiceRec = null, wakeRec = null, wakeActive = false;
 let isListening = false, isSpeaking = false, waveTimer = null;
+let agentMode = false;
+
+// ── Agent Mode (header toggle) ─────────────────────────────────────────────
+function toggleAgentMode() {
+  agentMode = !agentMode;
+  const btn = document.getElementById('btn-agent-mode');
+  const lbl = document.getElementById('agent-mode-label');
+  const inp = document.getElementById('user-input');
+  if (agentMode) {
+    btn.style.borderColor = '#a78bfa';
+    btn.style.background = 'rgba(139,92,246,0.15)';
+    btn.style.color = '#a78bfa';
+    lbl.style.display = 'block';
+    inp.placeholder = 'Give Kyrox a goal… it handles it alone';
+  } else {
+    btn.style.borderColor = 'rgba(139,92,246,0.3)';
+    btn.style.background = 'transparent';
+    btn.style.color = '#a78bfa';
+    lbl.style.display = 'none';
+    inp.placeholder = 'Message Kyrox…';
+  }
+  toast(agentMode ? '⚡ Agent Mode ON — Kyrox acts alone' : 'Agent Mode OFF');
+}
+
+// ── AGENT PANEL ────────────────────────────────────────────────────────────
+const AgentPanel = (() => {
+  let panelOpen = false;
+  let watching = false;
+  let running = false;
+  let watchInterval = null;
+  let latestB64 = null;
+
+  const btnHdr     = document.getElementById('btn-agent-hdr');
+  const panel      = document.getElementById('agent-panel');
+  const backdrop   = document.getElementById('agent-backdrop');
+  const panelDot   = document.getElementById('agent-panel-dot');
+  const statusTxt  = document.getElementById('agent-panel-status');
+  const feed       = document.getElementById('agent-feed');
+  const canvas     = document.getElementById('agent-canvas');
+  const screenEmpty= document.getElementById('agent-screen-empty');
+  const cursorDot  = document.getElementById('agent-cursor-dot');
+  const taskInput  = document.getElementById('agent-task-input');
+  const runBtn     = document.getElementById('agent-run-btn');
+  const watchChk   = document.getElementById('agent-always-watch');
+  const ctx2d      = canvas.getContext('2d');
+
+  function open() {
+    panelOpen = true;
+    panel.classList.add('open');
+    backdrop.classList.add('open');
+    btnHdr.classList.add('active');
+    if (!watching) startWatch();
+  }
+
+  function close() {
+    panelOpen = false;
+    panel.classList.remove('open');
+    backdrop.classList.remove('open');
+    if (!running) btnHdr.classList.remove('active');
+  }
+
+  function toggle() { if (panelOpen) close(); else open(); }
+
+  function setStatus(txt, mode) {
+    statusTxt.textContent = txt;
+    panelDot.className = 'agent-panel-dot' + (mode ? ' ' + mode : '');
+  }
+
+  // Screen capture
+  async function capture() {
+    try {
+      const r = await fetch('/api/agent/screenshot');
+      if (!r.ok) return;
+      const d = await r.json();
+      if (d.b64) { latestB64 = d.b64; renderFrame(d.b64); }
+    } catch(e) {}
+  }
+
+  function renderFrame(b64) {
+    const img = new Image();
+    img.onload = () => {
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      ctx2d.drawImage(img, 0, 0);
+      screenEmpty.classList.add('hidden');
+    };
+    img.src = 'data:image/png;base64,' + b64;
+  }
+
+  function startWatch() {
+    watching = true;
+    capture();
+    setStatus('WATCHING', 'watching');
+    if (watchChk.checked) {
+      stopWatch(false);
+      watchInterval = setInterval(capture, 2800);
+    }
+  }
+
+  function stopWatch(full = true) {
+    if (watchInterval) { clearInterval(watchInterval); watchInterval = null; }
+    if (full) { watching = false; setStatus('STANDBY', ''); }
+  }
+
+  watchChk.addEventListener('change', () => {
+    if (watching) {
+      if (watchChk.checked) startWatch();
+      else stopWatch(false);
+    }
+  });
+
+  // Feed
+  function clearFeed() {
+    feed.innerHTML = '';
+  }
+
+  function addStep(icon, type, desc, cls = '', imgB64 = null) {
+    const empty = feed.querySelector('.agent-feed-empty');
+    if (empty) empty.remove();
+    const el = document.createElement('div');
+    el.className = 'agent-step' + (cls ? ' ' + cls : '');
+    const imgHtml = imgB64
+      ? `<img src="data:image/png;base64,${imgB64}" class="agent-step-img" alt="Generated image" onclick="window.open(this.src,'_blank')" />`
+      : '';
+    el.innerHTML = `<div class="agent-step-icon">${icon}</div>
+      <div class="agent-step-body">
+        <div class="agent-step-type">${type}</div>
+        <div class="agent-step-desc">${esc(desc)}</div>
+        ${imgHtml}
+      </div>`;
+    feed.appendChild(el);
+    feed.scrollTop = feed.scrollHeight;
+    return el;
+  }
+
+  // Run task
+  async function runTask(task) {
+    if (running) return;
+    running = true;
+    runBtn.disabled = true;
+    btnHdr.classList.add('active');
+    setStatus('RUNNING', 'thinking');
+    clearFeed();
+
+    await capture();
+    addStep('🎯', 'TASK', task);
+    const thinkEl = addStep('◌', 'PLANNING', 'Working out what to do…', 'thinking');
+
+    try {
+      const res = await fetch('/api/agent/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task, screen: latestB64 || null })
+      });
+      thinkEl.remove();
+
+      if (!res.ok) {
+        addStep('✕', 'ERROR', `Server error ${res.status}`, 'err');
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          const t = line.trim();
+          if (!t) continue;
+          try {
+            const step = JSON.parse(t);
+            processStep(step);
+          } catch(e) {}
+        }
+      }
+
+      await capture();
+      addStep('✓', 'DONE', 'Task completed', 'ok');
+      setStatus('WATCHING', 'watching');
+
+    } catch(err) {
+      thinkEl?.remove();
+      addStep('✕', 'ERROR', err.message || 'Unknown error', 'err');
+      setStatus('ERROR', '');
+    } finally {
+      running = false;
+      runBtn.disabled = false;
+      if (!panelOpen) btnHdr.classList.remove('active');
+    }
+  }
+
+  const STEP_ICONS = {
+    screenshot:'📸', click:'🖱️', type:'⌨️', key:'⌨️',
+    open:'🌐', navigate:'🌐', search:'🔍', run_script:'⚡',
+    write_file:'📝', read_file:'📖', send_message:'💬',
+    scroll:'↕️', wait:'⏳', observe:'👁️', plan:'📋',
+    done:'✓', error:'✕', web_fetch:'📡', web_browse:'🌐',
+    notify:'🔔', clipboard:'📋', type_text:'⌨️', generate_image:'🎨',
+  };
+
+  function processStep(step) {
+    const icon  = STEP_ICONS[step.type] || '◈';
+    const label = (step.type || 'step').toUpperCase().replace(/_/g, ' ');
+    const desc  = step.message || step.description || step.target || step.query || '';
+    const cls   = step.type === 'error' ? 'err' : step.type === 'done' ? 'ok' : step.type === 'plan' ? 'thinking' : '';
+
+    // Screenshot update from server
+    if (step.type === 'screenshot' && step.b64) {
+      renderFrame(step.b64);
+      return;
+    }
+
+    // Generated image — render inline in the feed
+    if (step.type === 'generate_image' && step.b64) {
+      addStep(icon, label, desc || 'Image generated', 'ok', step.b64);
+      return;
+    }
+
+    addStep(icon, label, desc, cls);
+
+    // Show cursor for click steps
+    if (step.x !== undefined && step.y !== undefined) showCursor(step.x, step.y);
+    if (['click','type','navigate','open','key','type_text'].includes(step.type)) {
+      setTimeout(capture, 1000);
+    }
+  }
+
+  function showCursor(nx, ny) {
+    const rect = canvas.getBoundingClientRect();
+    cursorDot.style.display = 'block';
+    cursorDot.style.left = (nx * rect.width) + 'px';
+    cursorDot.style.top  = (ny * rect.height) + 'px';
+    setTimeout(() => { cursorDot.style.display = 'none'; }, 1200);
+  }
+
+  // Bindings
+  btnHdr.addEventListener('click', toggle);
+  document.getElementById('agent-panel-close').addEventListener('click', close);
+  backdrop.addEventListener('click', close);
+
+  runBtn.addEventListener('click', () => {
+    const t = taskInput.value.trim();
+    if (!t) return;
+    taskInput.value = '';
+    runTask(t);
+  });
+  taskInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runBtn.click(); }
+  });
+
+  return { open, close, toggle, runTask };
+})();
+
+// ── Orb write mode ─────────────────────────────────────────────────────────
+let orbMode = 'voice'; // 'voice' | 'write'
+
+function setOrbMode(mode) {
+  orbMode = mode;
+  const wrap = document.getElementById('orb-input-wrap');
+  const waveEl = document.getElementById('waveform');
+  const voiceBtn = document.getElementById('orb-btn-voice');
+  const writeBtn = document.getElementById('orb-btn-write');
+  const orbSub = document.getElementById('orb-sub');
+
+  if (mode === 'write') {
+    wrap.classList.add('active');
+    waveEl.style.visibility = 'hidden';
+    voiceBtn.classList.remove('active');
+    writeBtn.classList.add('active');
+    orbSub && (orbSub.textContent = 'TAP TO TYPE');
+    setTimeout(() => document.getElementById('orb-type-input').focus(), 100);
+  } else {
+    wrap.classList.remove('active');
+    waveEl.style.visibility = 'visible';
+    voiceBtn.classList.add('active');
+    writeBtn.classList.remove('active');
+    orbSub && (orbSub.textContent = 'TAP TO SPEAK');
+  }
+}
+
+function sendOrbText() {
+  const inp = document.getElementById('orb-type-input');
+  const text = inp.value.trim();
+  if (!text) return;
+  inp.value = '';
+  setOrbMode('voice');
+  activateTab('chat');
+  sendMessage(text);
+}
+
+// Make orb click respect mode
+const _origHandleOrbClick = handleOrbClick;
+function handleOrbClick() {
+  if (orbMode === 'write') {
+    document.getElementById('orb-type-input').focus();
+  } else {
+    _origHandleOrbClick();
+  }
+}
+
+// Enter key in orb textarea
+document.getElementById('orb-type-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendOrbText(); }
+});
 
 // ── Init ───────────────────────────────────────────────────────────────────
 async function init() {
@@ -562,6 +1199,7 @@ async function init() {
   renderEmptyState();
   initVoice();
   connectWS();
+  checkAutostartPrompt();
   if (window.speechSynthesis) {
     window.speechSynthesis.getVoices();
     const cacheVoices = () => {
@@ -748,6 +1386,16 @@ function handleWS(msg) {
       }); break;
     case 'model_switch':
       addModelNotice(msg.from); break;
+    // ── Agent events ──
+    case 'agent_start':
+      toast('⚡ Agent started — Kyrox is acting…'); break;
+    case 'agent_step':
+      addAgentStep(msg.step, msg.thought, null, true); break;
+    case 'agent_action':
+      addAgentStep(msg.step||'?', msg.result, msg.action_type, msg.ok); break;
+    case 'agent_done':
+      finalizeAgentCard(msg.summary);
+      isStreaming=false; setBtnState(false); break;
   }
 }
 
@@ -755,6 +1403,7 @@ function handleWS(msg) {
 const APP_ICONS = {
   open: '→', search: '◎', run_script: '»', read_file: '↗', 
   write_file: '↙', send_message: '↑', send_socials: '◈', list_files: '≡',
+  generate_image: '🎨',
 };
 const MSG_APP_ICONS = {discord:'💜', telegram:'✈️', whatsapp:'💚', slack:'#'};
 const SOCIAL_ICONS  = {twitch:'◉',twitter:'◈',instagram:'○',youtube:'▷',discord:'◎',github:'◇'};
@@ -871,6 +1520,9 @@ function executeActionClient(act) {
   // ── send_socials ──
   if (type === 'send_socials') { showSocialsCard(); return null; }
 
+  // generate_image — handled server-side (calls OpenRouter), fall through to server result
+  if (type === 'generate_image') { return null; }
+
   // For read_file, run_script, list_files — these need the server (local PC only)
   // Return null to fall back to server result
   return null;
@@ -939,6 +1591,52 @@ function addActionCard(action, result) {
     if (files.length) extra = `<div class="script-out">${files.slice(0,30).map(f=>esc(f)).join('\n')}${files.length>30?'\n…':''}
 </div>`;
 
+  } else if (action.type === 'web_fetch') {
+    title = `📡 WEB FETCH: ${esc((action.url||'').slice(0,60))}`;
+    sub   = ok ? `✓ ${result.content ? result.content.slice(0,80)+'…' : 'Content fetched'}` : esc(result.message||'Failed');
+
+  } else if (action.type === 'web_browse') {
+    title = `🌐 NAVIGATION: ${esc((action.url||'').slice(0,60))}`;
+    const stepCount = (action.steps||[]).length;
+    sub   = ok ? `✓ ${stepCount} steps executed` : esc(result.message||'Failed');
+    if (result.message) extra = `<div class="script-out">${esc(result.message.slice(0,400))}</div>`;
+
+  } else if (action.type === 'notify') {
+    title = `🔔 NOTIFICATION: ${esc(action.title||'Kyrox')}`;
+    sub   = esc(action.message||'');
+
+  } else if (action.type === 'clipboard') {
+    title = `📋 CLIPBOARD`;
+    sub   = ok ? `✓ Copied: ${esc((action.text||'').slice(0,60))}` : esc(result.message||'Failed');
+
+  } else if (action.type === 'type_text') {
+    title = `⌨️ TYPING`;
+    sub   = ok ? `✓ Typed: ${esc((action.text||'').slice(0,60))}` : esc(result.message||'Failed');
+
+  } else if (action.type === 'hotkey') {
+    title = `⌨️ HOTKEY: ${esc((action.keys||[]).join('+'))}`;
+    sub   = ok ? '✓ Executed' : esc(result.message||'Failed');
+
+  } else if (action.type === 'click_pos') {
+    title = `🖱️ CLICK: (${action.x}, ${action.y})`;
+    sub   = ok ? '✓ Clicked' : esc(result.message||'Failed');
+
+  } else if (action.type === 'generate_image') {
+    title = `🎨 IMAGE: ${esc((action.prompt||'').slice(0,70))}`;
+    if (ok && result.b64) {
+      sub = '✓ Generated';
+      const imgId = 'kx-img-' + Math.random().toString(36).slice(2);
+      extra = `<div class="kx-image-wrap">
+        <img id="${imgId}" class="kx-generated-image" src="data:image/png;base64,${result.b64}" alt="${esc(action.prompt||'Generated image')}" />
+        <div class="kx-image-actions">
+          <button class="kx-img-btn" onclick="downloadGeneratedImage('${imgId}','${esc((action.prompt||'kyrox-image').slice(0,30)).replace(/[^a-z0-9]/gi,'_')}')">⬇ Download</button>
+          <button class="kx-img-btn" onclick="openGeneratedImage('${imgId}')">⤢ Fullscreen</button>
+        </div>
+      </div>`;
+    } else {
+      sub = esc(result.message || 'Image generation failed');
+    }
+
   } else {
     title = esc((action.type||'').toUpperCase());
     sub   = esc(result.message||'');
@@ -954,6 +1652,22 @@ function addActionCard(action, result) {
     <div class="action-ok ${ok?'':'fail'}"></div>`;
   area.appendChild(d);
   scrollBottom();
+}
+
+function downloadGeneratedImage(imgId, name) {
+  const img = document.getElementById(imgId);
+  if (!img) return;
+  const a = document.createElement('a');
+  a.href = img.src;
+  a.download = (name || 'kyrox-image') + '.png';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+}
+
+function openGeneratedImage(imgId) {
+  const img = document.getElementById(imgId);
+  if (!img) return;
+  window.open(img.src, '_blank');
 }
 
 function showSocialsCard() {
@@ -982,6 +1696,7 @@ function renderEmptyState() {
       <div class="chip" onclick="sendChip('Send a message to John on Discord: hey are you there?')">Send message</div>
       <div class="chip" onclick="sendChip('Write a Python script to list my desktop files')">Run script</div>
       <div class="chip" onclick="sendChip('Look at my screen')">Screen capture</div>
+      <div class="chip" onclick="sendChip('Generate an image of a futuristic cyberpunk city at night')">Generate image</div>
     </div>
   </div>`;
 }
@@ -1049,8 +1764,83 @@ function showError(msg) {
 function sendMessage(text) {
   if(!text.trim()||isStreaming||!ws||ws.readyState!==1)return;
   addUserMsg(text); isStreaming=true; setBtnState(true);
-  streamBuffer=''; startAssistantMsg();
-  ws.send(JSON.stringify({action:'chat',message:text}));
+  if (agentMode) {
+    // Agent mode — Kyrox acts autonomously, no streaming
+    addAgentProgressCard(text);
+    ws.send(JSON.stringify({action:'agent', goal:text}));
+  } else {
+    streamBuffer=''; startAssistantMsg();
+    ws.send(JSON.stringify({action:'chat',message:text}));
+  }
+}
+
+// ── Agent progress card ────────────────────────────────────────────────────
+let agentCard = null;
+let agentStepsList = null;
+
+function addAgentProgressCard(goal) {
+  removeEmptyState();
+  const area = document.getElementById('chat-area');
+  const d = document.createElement('div');
+  d.className = 'morning-recap-card';
+  d.id = 'agent-progress-card';
+  d.innerHTML = `
+    <div class="mrc-header">
+      <div class="mrc-title">
+        <span>⚡</span> AGENT RUNNING
+      </div>
+      <span class="mrc-total" id="agent-step-count">step 0</span>
+    </div>
+    <div class="mrc-item">
+      <div class="mrc-item-icon">🎯</div>
+      <div class="mrc-item-body">
+        <div class="mrc-item-name">Goal</div>
+        <div class="mrc-item-detail">${esc(goal)}</div>
+      </div>
+    </div>
+    <div id="agent-steps-list" style="display:flex;flex-direction:column;gap:6px;margin-top:4px"></div>
+  `;
+  area.appendChild(d);
+  agentCard = d;
+  agentStepsList = d.querySelector('#agent-steps-list');
+  scrollBottom();
+}
+
+function addAgentStep(step, thought, actionType, actionOk) {
+  const ctr = document.getElementById('agent-step-count');
+  if(ctr) ctr.textContent = `step ${step}`;
+  if(!agentStepsList) return;
+  const el = document.createElement('div');
+  el.className = 'mrc-item' + (actionOk === false ? ' alert' : '');
+  el.innerHTML = `
+    <div class="mrc-item-icon">${actionType ? getActionEmoji(actionType) : '💭'}</div>
+    <div class="mrc-item-body">
+      <div class="mrc-item-name" style="font-size:10px;color:var(--text3);font-family:var(--mono)">${actionType ? actionType.toUpperCase() : 'THINK'}</div>
+      <div class="mrc-item-detail">${esc((thought||'').slice(0,120))}</div>
+    </div>
+  `;
+  agentStepsList.appendChild(el);
+  scrollBottom();
+}
+
+function getActionEmoji(type) {
+  const map = {
+    web_browse:'🌐', web_fetch:'📡', open:'→', search:'🔍',
+    run_script:'⚡', write_file:'📝', read_file:'📂', send_message:'✉️',
+    notify:'🔔', clipboard:'📋', type_text:'⌨️', hotkey:'⌨️', click_pos:'🖱️',
+  };
+  return map[type] || '⚙️';
+}
+
+function finalizeAgentCard(result) {
+  if(!agentCard) return;
+  const stepsDiv = agentCard.querySelector('#agent-steps-list');
+  const doneEl = document.createElement('div');
+  doneEl.className = 'mrc-all-ok';
+  doneEl.innerHTML = `<div class="mrc-ok-dot">✓</div><div><div style="font-size:12px;font-weight:600;color:#00cc6a">Task completed</div><div class="mrc-item-detail" style="margin-top:2px">${esc((result||'').slice(0,200))}</div></div>`;
+  agentCard.appendChild(doneEl);
+  agentCard = null; agentStepsList = null;
+  scrollBottom();
 }
 
 function sendChip(text){document.getElementById('user-input').value=text;send();}
@@ -1248,13 +2038,61 @@ async function saveSettings() {
 document.getElementById('btn-save-settings').addEventListener('click',saveSettings);
 document.getElementById('btn-clear-memory').addEventListener('click',async()=>{if(!confirm('Clear all memory?'))return;await fetch(`/api/memory/${currentUser}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({facts:[],preferences:{}})});memory={facts:[],preferences:{}};updateSidebarMemory();renderSettingsMemory();toast('Memory cleared');});
 document.getElementById('btn-clear-history').addEventListener('click',()=>{if(!confirm('Clear conversation?'))return;if(ws&&ws.readyState===1)ws.send(JSON.stringify({action:'clear'}));closeSettings();});
-function openSettings(){renderSettingsMemory();loadSkills();document.getElementById('settings-panel').classList.add('open');}
+function openSettings(){renderSettingsMemory();loadSkills();refreshAutostartToggle();document.getElementById('settings-panel').classList.add('open');}
+
+async function refreshAutostartToggle() {
+  const el = document.getElementById('autostart-toggle-val');
+  if (!el) return;
+  try {
+    const r = await fetch('/api/autostart/status');
+    const data = await r.json();
+    el.textContent = data.enabled ? 'ON' : 'OFF';
+    el.style.color = data.enabled ? '#00cc6a' : '';
+  } catch (e) { el.textContent = '—'; }
+}
+
+async function toggleAutostartSetting() {
+  const el = document.getElementById('autostart-toggle-val');
+  const currentlyOn = el.textContent.trim() === 'ON';
+  el.textContent = '…';
+  try {
+    const r = await fetch(currentlyOn ? '/api/autostart/disable' : '/api/autostart/enable', { method: 'POST' });
+    const data = await r.json();
+    if (data.ok) {
+      toast(currentlyOn ? 'Autostart disabled' : 'Autostart enabled — Kyrox opens on every boot');
+    } else {
+      toast(data.message || 'Could not change autostart');
+    }
+  } catch (e) {
+    toast('Could not reach server');
+  }
+  refreshAutostartToggle();
+}
 function closeSettings(){document.getElementById('settings-panel').classList.remove('open');}
 document.getElementById('btn-settings').addEventListener('click',openSettings);
-document.getElementById('btn-new-chat').addEventListener('click',()=>{
+function triggerNewChat(){
   if(ws&&ws.readyState===1) ws.send(JSON.stringify({action:'new_chat'}));
   else { document.getElementById('chat-area').innerHTML=''; renderEmptyState(); }
+  closeMobileSidebar();
+}
+document.getElementById('btn-new-chat').addEventListener('click',triggerNewChat);
+document.getElementById('btn-new-chat-sidebar').addEventListener('click',triggerNewChat);
+
+// ── Mobile sidebar toggle ──
+function openMobileSidebar(){
+  document.getElementById('sidebar').classList.add('mobile-open');
+  document.getElementById('sidebar-backdrop').classList.add('open');
+}
+function closeMobileSidebar(){
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebar-backdrop').classList.remove('open');
+}
+document.getElementById('btn-menu-toggle').addEventListener('click',()=>{
+  const sb=document.getElementById('sidebar');
+  if(sb.classList.contains('mobile-open')) closeMobileSidebar();
+  else openMobileSidebar();
 });
+document.getElementById('sidebar-backdrop').addEventListener('click',closeMobileSidebar);
 
 function learnFact(){
   const inp=document.getElementById('learn-fact-input');
@@ -1367,6 +2205,51 @@ document.addEventListener('mousemove',e=>{if(!overlayDragging)return;const w=doc
 document.addEventListener('mouseup',()=>{if(!overlayDragging)return;overlayDragging=false;document.getElementById('app').style.pointerEvents='';document.getElementById('overlay-widget').style.userSelect='';});
 function overlayAsk(){const input=document.getElementById('overlay-input');const q=input.value.trim();if(!q)return;const respEl=document.getElementById('overlay-response');respEl.style.display='block';respEl.textContent='Thinking...';window._overlayPending=true;const screenQ=(q.toLowerCase().includes('screen')||q.toLowerCase().includes('ecran'))?q:'Look at my screen: '+q;sendMessage(screenQ);activateTab('chat');}
 function captureAndAsk(){const input=document.getElementById('overlay-input');const q=input.value.trim()||'Describe everything visible on my screen.';const respEl=document.getElementById('overlay-response');respEl.style.display='block';respEl.textContent='Scanning screen...';window._overlayPending=true;sendMessage(q.toLowerCase().includes('screen')?q:'Look at my screen and '+q);activateTab('chat');}
+
+// ── Autostart prompt (launch on PC boot) ───────────────────────────────────
+async function checkAutostartPrompt() {
+  try {
+    const r = await fetch('/api/autostart/status');
+    if (!r.ok) return;
+    const data = await r.json();
+    if (!data.asked) {
+      // Never asked before — show the prompt once
+      document.getElementById('autostart-modal').classList.add('open');
+    }
+  } catch (e) {}
+}
+
+function setAutostartStatus(text) {
+  document.getElementById('as-status').textContent = text;
+}
+
+document.getElementById('as-btn-yes').addEventListener('click', async () => {
+  const yesBtn = document.getElementById('as-btn-yes');
+  const noBtn  = document.getElementById('as-btn-no');
+  yesBtn.disabled = true; noBtn.disabled = true;
+  setAutostartStatus('Setting up autostart…');
+  try {
+    const r = await fetch('/api/autostart/enable', { method: 'POST' });
+    const data = await r.json();
+    if (data.ok) {
+      setAutostartStatus('Kyrox will now launch automatically on startup.');
+      toast('Autostart enabled — Kyrox opens on every boot');
+    } else {
+      setAutostartStatus(data.message || 'Could not enable autostart.');
+      toast('Autostart failed — see Settings to try manually');
+    }
+  } catch (e) {
+    setAutostartStatus('Could not reach server.');
+  }
+  setTimeout(() => {
+    document.getElementById('autostart-modal').classList.remove('open');
+  }, 1100);
+});
+
+document.getElementById('as-btn-no').addEventListener('click', async () => {
+  document.getElementById('autostart-modal').classList.remove('open');
+  try { await fetch('/api/autostart/dismiss', { method: 'POST' }); } catch (e) {}
+});
 
 setTimeout(populateVoiceSelect,800);
 init();
